@@ -1,8 +1,12 @@
-import React, { useEffect, useReducer, useState } from "react";
+import { useEffect, useReducer, useState } from "react";
+import type { FormEvent } from "react";
 import { api } from "../lib/api";
 import { RecipeCard } from "../components/RecipeCard";
 import { initialState, reducer } from "../lib/state";
 import type { Recipe } from "../lib/types";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
 
 export function Recipes({
   onInstall,
@@ -31,30 +35,30 @@ export function Recipes({
     load("");
   }, []);
 
-  const onLoadSource = (event: React.FormEvent) => {
+  const onLoadSource = (event: FormEvent) => {
     event.preventDefault();
     load(source);
   };
 
   return (
     <section>
-      <h2>Recipes</h2>
-      <form onSubmit={onLoadSource} style={{ marginBottom: 8 }}>
-        <label>
-          Recipe source (file path or URL)
-          <input
-            value={source}
-            onChange={(event) => setSource(event.target.value)}
-            placeholder="/path/recipes.json or https://example.com/recipes.json"
-            style={{ marginLeft: 8, width: 380 }}
-          />
-        </label>
-        <button type="submit" style={{ marginLeft: 8 }}>
+      <h2 className="text-2xl font-bold text-text-main mb-4">Recipes</h2>
+      <form onSubmit={onLoadSource} className="mb-2 flex items-center gap-2">
+        <Label>Recipe source (file path or URL)</Label>
+        <Input
+          value={source}
+          onChange={(event) => setSource(event.target.value)}
+          placeholder="/path/recipes.json or https://example.com/recipes.json"
+          className="w-[380px] bg-panel border-border-subtle text-text-main"
+        />
+        <Button type="submit" className="ml-2">
           {isLoading ? "Loading..." : "Load"}
-        </button>
+        </Button>
       </form>
-      <p style={{ opacity: 0.8, marginTop: 0 }}>Loaded from: {loadedSource || "builtin / clawpal recipes"}</p>
-      <div className="recipe-grid">
+      <p className="text-sm text-text-main/80 mt-0">
+        Loaded from: {loadedSource || "builtin / clawpal recipes"}
+      </p>
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-3">
         {state.recipes.map((recipe: Recipe) => (
           <RecipeCard
             key={recipe.id}

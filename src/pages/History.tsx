@@ -1,7 +1,10 @@
-import React, { useEffect, useReducer } from "react";
+import { useEffect, useReducer } from "react";
 import { api } from "../lib/api";
 import { initialState, reducer } from "../lib/state";
 import { DiffViewer } from "../components/DiffViewer";
+import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 
 export function History() {
   const [state, dispatch] = useReducer(reducer, initialState);
@@ -16,54 +19,66 @@ export function History() {
 
   return (
     <section>
-      <h2>History</h2>
-      <div className="history-list">
+      <h2 className="text-2xl font-bold text-text-main mb-4">History</h2>
+      <div className="space-y-3">
         {state.history.map((item) => (
-          <article key={item.id} className="history-item">
-            <p>
-              {item.createdAt} · {item.recipeId || "manual"} · {item.source}
-              {!item.canRollback ? " · not rollbackable" : ""}
-            </p>
-            <button
-              onClick={async () => {
-                try {
-                  const preview = await api.previewRollback(item.id);
-                  dispatch({ type: "setPreview", preview });
-                } catch (err) {
-                  dispatch({ type: "setMessage", message: String(err) });
-                }
-              }}
-              disabled={!item.canRollback}
-            >
-              Preview rollback
-            </button>
-            <button
-              onClick={async () => {
-                if (!item.canRollback) {
-                  dispatch({
-                    type: "setMessage",
-                    message: "This snapshot cannot be rolled back",
-                  });
-                  return;
-                }
-                try {
-                  await api.rollback(item.id);
-                  dispatch({ type: "setMessage", message: "Rollback completed" });
-                  await refreshHistory();
-                } catch (err) {
-                  dispatch({ type: "setMessage", message: String(err) });
-                }
-              }}
-              disabled={!item.canRollback}
-            >
-              Rollback
-            </button>
-          </article>
+          <Card key={item.id} className="bg-panel border-border-subtle">
+            <CardContent>
+              <p className="text-sm text-text-main">
+                {item.createdAt} · {item.recipeId || "manual"} · {item.source}
+                {!item.canRollback && (
+                  <Badge variant="outline" className="ml-2">not rollbackable</Badge>
+                )}
+              </p>
+              <div className="flex gap-2 mt-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={async () => {
+                    try {
+                      const preview = await api.previewRollback(item.id);
+                      dispatch({ type: "setPreview", preview });
+                    } catch (err) {
+                      dispatch({ type: "setMessage", message: String(err) });
+                    }
+                  }}
+                  disabled={!item.canRollback}
+                >
+                  Preview rollback
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={async () => {
+                    if (!item.canRollback) {
+                      dispatch({
+                        type: "setMessage",
+                        message: "This snapshot cannot be rolled back",
+                      });
+                      return;
+                    }
+                    try {
+                      await api.rollback(item.id);
+                      dispatch({ type: "setMessage", message: "Rollback completed" });
+                      await refreshHistory();
+                    } catch (err) {
+                      dispatch({ type: "setMessage", message: String(err) });
+                    }
+                  }}
+                  disabled={!item.canRollback}
+                >
+                  Rollback
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
         ))}
       </div>
       {state.lastPreview && <DiffViewer value={state.lastPreview.diff} />}
-      <button onClick={refreshHistory}>Refresh</button>
-      <p>{state.message}</p>
+      <Button variant="outline" onClick={refreshHistory} className="mt-3">
+        Refresh
+      </Button>
+      <p className="text-sm text-text-main/70 mt-2">{state.message}</p>
     </section>
   );
 }
