@@ -1,5 +1,9 @@
-import React, { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import type { Recipe, RecipeParam } from "../lib/types";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
 
 function validateField(param: RecipeParam, value: string): string | null {
   const trim = value.trim();
@@ -49,7 +53,7 @@ export function ParamForm({
   const hasError = Object.keys(errors).length > 0;
 
   return (
-    <form className="param-form" onSubmit={(e) => {
+    <form className="space-y-4" onSubmit={(e) => {
       e.preventDefault();
       if (hasError) {
         return;
@@ -57,10 +61,12 @@ export function ParamForm({
       onSubmit();
     }}>
       {recipe.params.map((param: RecipeParam) => (
-        <label key={param.id}>
-          <span>{param.label}</span>
+        <div key={param.id} className="space-y-1.5">
+          <Label htmlFor={param.id}>{param.label}</Label>
           {param.type === "textarea" ? (
-            <textarea
+            <Textarea
+              id={param.id}
+              className="bg-panel border-border-subtle text-text-main"
               value={values[param.id] || ""}
               placeholder={param.placeholder}
               onBlur={() => setTouched((prev) => ({ ...prev, [param.id]: true }))}
@@ -70,7 +76,9 @@ export function ParamForm({
               }}
             />
           ) : (
-            <input
+            <Input
+              id={param.id}
+              className="bg-panel border-border-subtle text-text-main"
               value={values[param.id] || ""}
               placeholder={param.placeholder}
               required={param.required}
@@ -82,11 +90,17 @@ export function ParamForm({
             />
           )}
           {touched[param.id] && errors[param.id] ? (
-            <small style={{ color: "#f98b8b", display: "block" }}>{errors[param.id]}</small>
+            <p className="text-sm text-destructive-red">{errors[param.id]}</p>
           ) : null}
-        </label>
+        </div>
       ))}
-      <button type="submit" disabled={hasError}>Preview</button>
+      <Button
+        type="submit"
+        disabled={hasError}
+        className="bg-btn-bg border border-btn-border text-text-main hover:bg-accent-blue/15"
+      >
+        Preview
+      </Button>
     </form>
   );
 }
