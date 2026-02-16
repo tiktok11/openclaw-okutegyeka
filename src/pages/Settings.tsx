@@ -1,6 +1,20 @@
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import type { FormEvent } from "react";
 import { api } from "../lib/api";
 import type { ModelCatalogProvider, ModelProfile, ResolvedApiKey } from "../lib/types";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 
 type ProfileForm = {
   id: string;
@@ -71,7 +85,7 @@ export function Settings() {
     return found?.models || [];
   }, [catalog, form.provider]);
 
-  const upsert = (event: React.FormEvent) => {
+  const upsert = (event: FormEvent) => {
     event.preventDefault();
     if (!form.provider || !form.model) {
       setMessage("Provider and Model are required");
@@ -141,206 +155,218 @@ export function Settings() {
 
   return (
     <section>
-      <h2>Settings</h2>
+      <h2 className="text-2xl font-bold text-text-main mb-4">Settings</h2>
 
       {/* ---- Model Profiles ---- */}
-      <div
-        style={{
-          display: "grid",
-          gap: 12,
-          gridTemplateColumns: "1fr 1fr",
-          alignItems: "start",
-        }}
-      >
+      <div className="grid grid-cols-2 gap-3 items-start">
         {/* Create / Edit form */}
-        <article className="card">
-          <h3>{form.id ? "Edit Profile" : "Add Profile"}</h3>
-          <form onSubmit={upsert} className="param-form">
-            <label>
-              Provider
-              <input
-                placeholder="e.g. openai"
-                value={form.provider}
-                onChange={(e) =>
-                  setForm((p) => ({ ...p, provider: e.target.value, model: "" }))
-                }
-                onFocus={ensureCatalog}
-                list="settings-provider-list"
-              />
-              <datalist id="settings-provider-list">
-                {catalog.map((c) => (
-                  <option key={c.provider} value={c.provider} />
-                ))}
-              </datalist>
-            </label>
-
-            <label>
-              Model
-              <input
-                placeholder="e.g. gpt-4o"
-                value={form.model}
-                onChange={(e) =>
-                  setForm((p) => ({ ...p, model: e.target.value }))
-                }
-                onFocus={ensureCatalog}
-                list="settings-model-list"
-              />
-              <datalist id="settings-model-list">
-                {modelCandidates.map((m) => (
-                  <option
-                    key={m.id}
-                    value={m.id}
-                    label={m.name || m.id}
-                  />
-                ))}
-              </datalist>
-            </label>
-
-            <label>
-              API Key
-              <input
-                type="password"
-                placeholder={form.id ? "(unchanged if empty)" : "sk-..."}
-                value={form.apiKey}
-                onChange={(e) =>
-                  setForm((p) => ({ ...p, apiKey: e.target.value }))
-                }
-              />
-            </label>
-
-            <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <input
-                type="checkbox"
-                checked={form.useCustomUrl}
-                onChange={(e) =>
-                  setForm((p) => ({ ...p, useCustomUrl: e.target.checked }))
-                }
-              />
-              Custom Base URL
-            </label>
-
-            {form.useCustomUrl && (
-              <label>
-                Base URL
-                <input
-                  placeholder="e.g. https://api.openai.com/v1"
-                  value={form.baseUrl}
+        <Card className="bg-panel border-border-subtle">
+          <CardHeader>
+            <CardTitle>{form.id ? "Edit Profile" : "Add Profile"}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={upsert} className="space-y-4">
+              <div className="space-y-1.5">
+                <Label>Provider</Label>
+                <Input
+                  placeholder="e.g. openai"
+                  value={form.provider}
                   onChange={(e) =>
-                    setForm((p) => ({ ...p, baseUrl: e.target.value }))
+                    setForm((p) => ({ ...p, provider: e.target.value, model: "" }))
+                  }
+                  onFocus={ensureCatalog}
+                  list="settings-provider-list"
+                  className="bg-panel border-border-subtle text-text-main"
+                />
+                <datalist id="settings-provider-list">
+                  {catalog.map((c) => (
+                    <option key={c.provider} value={c.provider} />
+                  ))}
+                </datalist>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label>Model</Label>
+                <Input
+                  placeholder="e.g. gpt-4o"
+                  value={form.model}
+                  onChange={(e) =>
+                    setForm((p) => ({ ...p, model: e.target.value }))
+                  }
+                  onFocus={ensureCatalog}
+                  list="settings-model-list"
+                  className="bg-panel border-border-subtle text-text-main"
+                />
+                <datalist id="settings-model-list">
+                  {modelCandidates.map((m) => (
+                    <option
+                      key={m.id}
+                      value={m.id}
+                      label={m.name || m.id}
+                    />
+                  ))}
+                </datalist>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label>API Key</Label>
+                <Input
+                  type="password"
+                  placeholder={form.id ? "(unchanged if empty)" : "sk-..."}
+                  value={form.apiKey}
+                  onChange={(e) =>
+                    setForm((p) => ({ ...p, apiKey: e.target.value }))
+                  }
+                  className="bg-panel border-border-subtle text-text-main"
+                />
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="custom-url"
+                  checked={form.useCustomUrl}
+                  onCheckedChange={(checked) =>
+                    setForm((p) => ({ ...p, useCustomUrl: checked === true }))
                   }
                 />
-              </label>
-            )}
+                <Label htmlFor="custom-url">Custom Base URL</Label>
+              </div>
 
-            <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-              <button type="submit">Save</button>
-              {form.id && (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => deleteProfile(form.id)}
-                    style={{ color: "#ff6b6b" }}
-                  >
-                    Delete
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setForm(emptyForm())}
-                  >
-                    Cancel
-                  </button>
-                </>
+              {form.useCustomUrl && (
+                <div className="space-y-1.5">
+                  <Label>Base URL</Label>
+                  <Input
+                    placeholder="e.g. https://api.openai.com/v1"
+                    value={form.baseUrl}
+                    onChange={(e) =>
+                      setForm((p) => ({ ...p, baseUrl: e.target.value }))
+                    }
+                    className="bg-panel border-border-subtle text-text-main"
+                  />
+                </div>
               )}
-            </div>
-          </form>
-        </article>
+
+              <div className="flex gap-2 mt-2">
+                <Button type="submit">Save</Button>
+                {form.id && (
+                  <>
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      onClick={() => deleteProfile(form.id)}
+                    >
+                      Delete
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setForm(emptyForm())}
+                    >
+                      Cancel
+                    </Button>
+                  </>
+                )}
+              </div>
+            </form>
+          </CardContent>
+        </Card>
 
         {/* Profiles list */}
-        <article className="card">
-          <h3>Model Profiles</h3>
-          {profiles.length === 0 && <p style={{ opacity: 0.6 }}>No model profiles yet.</p>}
-          <div style={{ display: "grid", gap: 8 }}>
-            {profiles.map((profile) => (
-              <div
-                key={profile.id}
-                style={{
-                  border: "1px solid #2d3560",
-                  padding: 10,
-                  borderRadius: 8,
-                }}
-              >
+        <Card className="bg-panel border-border-subtle">
+          <CardHeader>
+            <CardTitle>Model Profiles</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {profiles.length === 0 && (
+              <p className="text-text-main/60">No model profiles yet.</p>
+            )}
+            <div className="grid gap-2">
+              {profiles.map((profile) => (
                 <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                  }}
+                  key={profile.id}
+                  className="border border-btn-border p-2.5 rounded-lg"
                 >
-                  <strong>{profile.provider}/{profile.model}</strong>
-                  <span
-                    style={{
-                      opacity: 0.7,
-                      fontSize: "0.85rem",
-                      color: profile.enabled ? "#6dd0ff" : "#ff6b6b",
-                    }}
-                  >
-                    {profile.enabled ? "enabled" : "disabled"}
-                  </span>
-                </div>
-                <div style={{ opacity: 0.7, fontSize: "0.9rem", marginTop: 4 }}>
-                  API Key: {maskedKeyMap.get(profile.id) || "..."}
-                </div>
-                {profile.baseUrl && (
-                  <div
-                    style={{ opacity: 0.7, fontSize: "0.9rem", marginTop: 2 }}
-                  >
-                    URL: {profile.baseUrl}
+                  <div className="flex justify-between items-center">
+                    <strong>{profile.provider}/{profile.model}</strong>
+                    {profile.enabled ? (
+                      <Badge className="bg-accent-blue/15 text-accent-blue border-0">
+                        enabled
+                      </Badge>
+                    ) : (
+                      <Badge className="bg-destructive-red/15 text-destructive-red border-0">
+                        disabled
+                      </Badge>
+                    )}
                   </div>
-                )}
-                <div
-                  style={{ marginTop: 6, display: "flex", gap: 6 }}
-                >
-                  <button type="button" onClick={() => editProfile(profile)}>
-                    Edit
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => deleteProfile(profile.id)}
-                    style={{ color: "#ff6b6b" }}
-                  >
-                    Delete
-                  </button>
+                  <div className="text-sm text-text-main/70 mt-1">
+                    API Key: {maskedKeyMap.get(profile.id) || "..."}
+                  </div>
+                  {profile.baseUrl && (
+                    <div className="text-sm text-text-main/70 mt-0.5">
+                      URL: {profile.baseUrl}
+                    </div>
+                  )}
+                  <div className="flex gap-1.5 mt-1.5">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      type="button"
+                      onClick={() => editProfile(profile)}
+                    >
+                      Edit
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      type="button"
+                      onClick={() => deleteProfile(profile.id)}
+                    >
+                      Delete
+                    </Button>
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        </article>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       {/* ---- Chat Model ---- */}
-      <article className="card" style={{ marginTop: 16 }}>
-        <h3>Chat Model</h3>
-        <p style={{ opacity: 0.75, margin: "4px 0 8px" }}>
-          Select which model profile to use for the Chat feature.
-        </p>
-        <select
-          value={chatProfileId}
-          onChange={(e) => handleChatProfileChange(e.target.value)}
-          style={{ minWidth: 260 }}
-        >
-          <option value="">(none selected)</option>
-          {profiles
-            .filter((p) => p.enabled)
-            .map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.provider}/{p.model}
-              </option>
-            ))}
-        </select>
-      </article>
+      <Card className="bg-panel border-border-subtle mt-4">
+        <CardHeader>
+          <CardTitle>Chat Model</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-text-main/75 mt-1 mb-2">
+            Select which model profile to use for the Chat feature.
+          </p>
+          <Select
+            value={chatProfileId || "__none__"}
+            onValueChange={(v) =>
+              handleChatProfileChange(v === "__none__" ? "" : v)
+            }
+          >
+            <SelectTrigger className="w-[260px] bg-panel border-border-subtle text-text-main">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="bg-panel border-border-subtle">
+              <SelectItem value="__none__" className="text-text-main">
+                (none selected)
+              </SelectItem>
+              {profiles
+                .filter((p) => p.enabled)
+                .map((p) => (
+                  <SelectItem key={p.id} value={p.id} className="text-text-main">
+                    {p.provider}/{p.model}
+                  </SelectItem>
+                ))}
+            </SelectContent>
+          </Select>
+        </CardContent>
+      </Card>
 
       {message && (
-        <p style={{ marginTop: 12 }}>{message}</p>
+        <p className="text-sm text-text-main/70 mt-3">{message}</p>
       )}
     </section>
   );
