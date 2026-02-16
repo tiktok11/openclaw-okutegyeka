@@ -35,11 +35,11 @@ export function Install({
 
   const recipe = state.recipes.find((r) => r.id === recipeId);
 
-  if (!recipe) return <div className="text-text-main">Recipe not found</div>;
+  if (!recipe) return <div>Recipe not found</div>;
 
   return (
     <section>
-      <h2 className="text-2xl font-bold text-text-main mb-4">
+      <h2 className="text-2xl font-bold mb-4">
         Install {recipe.name}
       </h2>
       <ParamForm
@@ -55,9 +55,9 @@ export function Install({
         }}
       />
       {state.lastPreview && (
-        <Card className="mt-4 bg-panel border-border-subtle">
+        <Card className="mt-4">
           <CardHeader>
-            <CardTitle className="text-lg font-semibold text-text-main mb-2">
+            <CardTitle className="text-lg font-semibold mb-2">
               Preview
             </CardTitle>
           </CardHeader>
@@ -91,13 +91,13 @@ export function Install({
               >
                 Apply
               </Button>
-              {isPreviewing ? <span className="text-sm text-text-main/60 ml-2">...previewing</span> : null}
-              {isApplying ? <span className="text-sm text-text-main/60 ml-2">...applying</span> : null}
+              {isPreviewing ? <span className="text-sm text-muted-foreground ml-2">...previewing</span> : null}
+              {isApplying ? <span className="text-sm text-muted-foreground ml-2">...applying</span> : null}
             </div>
           </CardContent>
         </Card>
       )}
-      <p className="text-sm text-text-main/70 mt-2">{state.message}</p>
+      <p className="text-sm text-muted-foreground mt-2">{state.message}</p>
     </section>
   );
 }

@@ -87,23 +87,23 @@ export function Chat() {
   }, [input, loading, agentId, sessionId]);
 
   return (
-    <div className="w-[340px] min-w-[300px] flex flex-col border-l border-border-subtle pl-4">
+    <div className="w-[340px] min-w-[300px] flex flex-col border-l border-border pl-4">
       <div className="flex items-center gap-2 mb-2">
-        <h3 className="text-lg font-semibold text-text-main m-0">Chat</h3>
+        <h3 className="text-lg font-semibold m-0">Chat</h3>
         <Select value={agentId} onValueChange={(a) => { setAgentId(a); setSessionId(loadSessionId(a)); setMessages([]); }}>
-          <SelectTrigger className="w-auto h-7 text-xs bg-panel border-border-subtle text-text-main">
+          <SelectTrigger className="w-auto h-7 text-xs">
             <SelectValue />
           </SelectTrigger>
-          <SelectContent className="bg-panel border-border-subtle">
+          <SelectContent>
             {agents.map((a) => (
-              <SelectItem key={a} value={a} className="text-text-main">{a}</SelectItem>
+              <SelectItem key={a} value={a}>{a}</SelectItem>
             ))}
           </SelectContent>
         </Select>
         <Button
           variant="ghost"
           size="sm"
-          className="text-xs opacity-70 text-text-main"
+          className="text-xs opacity-70"
           onClick={() => { clearSessionId(agentId); setSessionId(undefined); setMessages([]); }}
         >
           New
@@ -113,10 +113,10 @@ export function Chat() {
         {messages.map((msg, i) => (
           <div key={i} className={cn("mb-2", msg.role === "user" ? "text-right" : "text-left")}>
             <div className={cn(
-              "inline-block px-3 py-2 rounded-lg max-w-[90%] text-left border border-border-subtle",
-              msg.role === "user" ? "bg-btn-border" : "bg-panel"
+              "inline-block px-3 py-2 rounded-lg max-w-[90%] text-left border border-border",
+              msg.role === "user" ? "bg-muted" : "bg-card"
             )}>
-              <div className="whitespace-pre-wrap text-sm text-text-main">{msg.content}</div>
+              <div className="whitespace-pre-wrap text-sm">{msg.content}</div>
             </div>
           </div>
         ))}
@@ -129,10 +129,9 @@ export function Chat() {
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
           placeholder="Ask your OpenClaw agent..."
-          className="flex-1 bg-panel border-border-subtle text-text-main"
+          className="flex-1"
         />
         <Button
-          className="bg-btn-bg border border-btn-border text-text-main hover:bg-accent-blue/15"
           onClick={send}
           disabled={loading}
         >

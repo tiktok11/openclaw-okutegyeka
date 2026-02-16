@@ -5,23 +5,23 @@ import { Button } from "@/components/ui/button";
 
 export function RecipeCard({ recipe, onInstall }: { recipe: Recipe; onInstall: (id: string) => void }) {
   return (
-    <Card className="bg-panel border-border-subtle">
+    <Card>
       <CardHeader>
-        <CardTitle className="text-text-main">{recipe.name}</CardTitle>
+        <CardTitle>{recipe.name}</CardTitle>
         <CardDescription>{recipe.description}</CardDescription>
       </CardHeader>
       <CardContent>
         <div className="flex flex-wrap gap-1.5 mb-2">
           {recipe.tags.map((t) => (
-            <Badge key={t} variant="secondary" className="bg-btn-bg border-btn-border text-text-main/80">
+            <Badge key={t} variant="secondary">
               {t}
             </Badge>
           ))}
         </div>
-        <p className="text-sm text-text-main/70">Impact: {recipe.impactCategory}</p>
+        <p className="text-sm text-muted-foreground">Impact: {recipe.impactCategory}</p>
       </CardContent>
       <CardFooter>
-        <Button onClick={() => onInstall(recipe.id)} className="bg-btn-bg border border-btn-border text-text-main hover:bg-accent-blue/15">
+        <Button onClick={() => onInstall(recipe.id)}>
           Install
         </Button>
       </CardFooter>

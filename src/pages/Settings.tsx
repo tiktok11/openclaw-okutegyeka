@@ -1,20 +1,24 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
-import { api } from "../lib/api";
-import type { ModelCatalogProvider, ModelProfile, ResolvedApiKey } from "../lib/types";
+import { api } from "@/lib/api";
+import type { ModelCatalogProvider, ModelProfile, ResolvedApiKey } from "@/lib/types";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
-} from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Command,
+  CommandInput,
+  CommandList,
+  CommandEmpty,
+  CommandGroup,
+  CommandItem,
+} from "@/components/ui/command";
+import { ChevronsUpDown, Check } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 type ProfileForm = {
   id: string;
@@ -38,7 +42,109 @@ function emptyForm(): ProfileForm {
   };
 }
 
-const CHAT_PROFILE_KEY = "clawpal_chat_profile";
+function ComboboxField({
+  value,
+  onChange,
+  onOpen,
+  options,
+  placeholder,
+}: {
+  value: string;
+  onChange: (val: string) => void;
+  onOpen?: () => void;
+  options: { value: string; label: string }[];
+  placeholder: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+
+  return (
+    <Popover
+      open={open}
+      onOpenChange={(o) => {
+        setOpen(o);
+        if (o && onOpen) onOpen();
+      }}
+    >
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          className="w-full justify-between font-normal"
+        >
+          {value || (
+            <span className="text-muted-foreground">{placeholder}</span>
+          )}
+          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        className="w-[--radix-popover-trigger-width] p-0"
+        align="start"
+      >
+        <Command shouldFilter={false}>
+          <CommandInput
+            placeholder={`Search ${placeholder.replace("e.g. ", "")}...`}
+            value={search}
+            onValueChange={setSearch}
+          />
+          <CommandList>
+            <CommandEmpty>No results found.</CommandEmpty>
+            <CommandGroup>
+              {/* Show typed value as option if it doesn't match any existing option */}
+              {search &&
+                !options.some(
+                  (o) => o.value.toLowerCase() === search.toLowerCase(),
+                ) && (
+                  <CommandItem
+                    onSelect={() => {
+                      onChange(search);
+                      setOpen(false);
+                      setSearch("");
+                    }}
+                  >
+                    <Check
+                      className={cn(
+                        "mr-2 h-4 w-4",
+                        value === search ? "opacity-100" : "opacity-0",
+                      )}
+                    />
+                    Use "{search}"
+                  </CommandItem>
+                )}
+              {options
+                .filter(
+                  (o) =>
+                    !search ||
+                    o.value.toLowerCase().includes(search.toLowerCase()) ||
+                    o.label.toLowerCase().includes(search.toLowerCase()),
+                )
+                .map((option) => (
+                  <CommandItem
+                    key={option.value}
+                    onSelect={() => {
+                      onChange(option.value);
+                      setOpen(false);
+                      setSearch("");
+                    }}
+                  >
+                    <Check
+                      className={cn(
+                        "mr-2 h-4 w-4",
+                        value === option.value ? "opacity-100" : "opacity-0",
+                      )}
+                    />
+                    {option.label}
+                  </CommandItem>
+                ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 export function Settings() {
   const [profiles, setProfiles] = useState<ModelProfile[]>([]);
@@ -46,9 +152,6 @@ export function Settings() {
   const [apiKeys, setApiKeys] = useState<ResolvedApiKey[]>([]);
   const [form, setForm] = useState<ProfileForm>(emptyForm());
   const [message, setMessage] = useState("");
-  const [chatProfileId, setChatProfileId] = useState(
-    () => localStorage.getItem(CHAT_PROFILE_KEY) || "",
-  );
 
   const [catalogRefreshed, setCatalogRefreshed] = useState(false);
 
@@ -135,32 +238,19 @@ export function Settings() {
         if (form.id === id) {
           setForm(emptyForm());
         }
-        if (chatProfileId === id) {
-          setChatProfileId("");
-          localStorage.removeItem(CHAT_PROFILE_KEY);
-        }
         refreshProfiles();
       })
       .catch(() => setMessage("Delete failed"));
   };
 
-  const handleChatProfileChange = (value: string) => {
-    setChatProfileId(value);
-    if (value) {
-      localStorage.setItem(CHAT_PROFILE_KEY, value);
-    } else {
-      localStorage.removeItem(CHAT_PROFILE_KEY);
-    }
-  };
-
   return (
     <section>
-      <h2 className="text-2xl font-bold text-text-main mb-4">Settings</h2>
+      <h2 className="text-2xl font-bold mb-4">Settings</h2>
 
       {/* ---- Model Profiles ---- */}
       <div className="grid grid-cols-2 gap-3 items-start">
         {/* Create / Edit form */}
-        <Card className="bg-panel border-border-subtle">
+        <Card>
           <CardHeader>
             <CardTitle>{form.id ? "Edit Profile" : "Add Profile"}</CardTitle>
           </CardHeader>
@@ -168,44 +258,34 @@ export function Settings() {
             <form onSubmit={upsert} className="space-y-4">
               <div className="space-y-1.5">
                 <Label>Provider</Label>
-                <Input
-                  placeholder="e.g. openai"
+                <ComboboxField
                   value={form.provider}
-                  onChange={(e) =>
-                    setForm((p) => ({ ...p, provider: e.target.value, model: "" }))
+                  onChange={(val) =>
+                    setForm((p) => ({ ...p, provider: val, model: "" }))
                   }
-                  onFocus={ensureCatalog}
-                  list="settings-provider-list"
-                  className="bg-panel border-border-subtle text-text-main"
+                  onOpen={ensureCatalog}
+                  options={catalog.map((c) => ({
+                    value: c.provider,
+                    label: c.provider,
+                  }))}
+                  placeholder="e.g. openai"
                 />
-                <datalist id="settings-provider-list">
-                  {catalog.map((c) => (
-                    <option key={c.provider} value={c.provider} />
-                  ))}
-                </datalist>
               </div>
 
               <div className="space-y-1.5">
                 <Label>Model</Label>
-                <Input
-                  placeholder="e.g. gpt-4o"
+                <ComboboxField
                   value={form.model}
-                  onChange={(e) =>
-                    setForm((p) => ({ ...p, model: e.target.value }))
+                  onChange={(val) =>
+                    setForm((p) => ({ ...p, model: val }))
                   }
-                  onFocus={ensureCatalog}
-                  list="settings-model-list"
-                  className="bg-panel border-border-subtle text-text-main"
+                  onOpen={ensureCatalog}
+                  options={modelCandidates.map((m) => ({
+                    value: m.id,
+                    label: m.name || m.id,
+                  }))}
+                  placeholder="e.g. gpt-4o"
                 />
-                <datalist id="settings-model-list">
-                  {modelCandidates.map((m) => (
-                    <option
-                      key={m.id}
-                      value={m.id}
-                      label={m.name || m.id}
-                    />
-                  ))}
-                </datalist>
               </div>
 
               <div className="space-y-1.5">
@@ -217,7 +297,6 @@ export function Settings() {
                   onChange={(e) =>
                     setForm((p) => ({ ...p, apiKey: e.target.value }))
                   }
-                  className="bg-panel border-border-subtle text-text-main"
                 />
               </div>
 
@@ -241,7 +320,6 @@ export function Settings() {
                     onChange={(e) =>
                       setForm((p) => ({ ...p, baseUrl: e.target.value }))
                     }
-                    className="bg-panel border-border-subtle text-text-main"
                   />
                 </div>
               )}
@@ -272,37 +350,37 @@ export function Settings() {
         </Card>
 
         {/* Profiles list */}
-        <Card className="bg-panel border-border-subtle">
+        <Card>
           <CardHeader>
             <CardTitle>Model Profiles</CardTitle>
           </CardHeader>
           <CardContent>
             {profiles.length === 0 && (
-              <p className="text-text-main/60">No model profiles yet.</p>
+              <p className="text-muted-foreground">No model profiles yet.</p>
             )}
             <div className="grid gap-2">
               {profiles.map((profile) => (
                 <div
                   key={profile.id}
-                  className="border border-btn-border p-2.5 rounded-lg"
+                  className="border border-border p-2.5 rounded-lg"
                 >
                   <div className="flex justify-between items-center">
                     <strong>{profile.provider}/{profile.model}</strong>
                     {profile.enabled ? (
-                      <Badge className="bg-accent-blue/15 text-accent-blue border-0">
+                      <Badge className="bg-blue-100 text-blue-700 border-0">
                         enabled
                       </Badge>
                     ) : (
-                      <Badge className="bg-destructive-red/15 text-destructive-red border-0">
+                      <Badge className="bg-red-100 text-red-700 border-0">
                         disabled
                       </Badge>
                     )}
                   </div>
-                  <div className="text-sm text-text-main/70 mt-1">
+                  <div className="text-sm text-muted-foreground mt-1">
                     API Key: {maskedKeyMap.get(profile.id) || "..."}
                   </div>
                   {profile.baseUrl && (
-                    <div className="text-sm text-text-main/70 mt-0.5">
+                    <div className="text-sm text-muted-foreground mt-0.5">
                       URL: {profile.baseUrl}
                     </div>
                   )}
@@ -331,42 +409,8 @@ export function Settings() {
         </Card>
       </div>
 
-      {/* ---- Chat Model ---- */}
-      <Card className="bg-panel border-border-subtle mt-4">
-        <CardHeader>
-          <CardTitle>Chat Model</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-text-main/75 mt-1 mb-2">
-            Select which model profile to use for the Chat feature.
-          </p>
-          <Select
-            value={chatProfileId || "__none__"}
-            onValueChange={(v) =>
-              handleChatProfileChange(v === "__none__" ? "" : v)
-            }
-          >
-            <SelectTrigger className="w-[260px] bg-panel border-border-subtle text-text-main">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent className="bg-panel border-border-subtle">
-              <SelectItem value="__none__" className="text-text-main">
-                (none selected)
-              </SelectItem>
-              {profiles
-                .filter((p) => p.enabled)
-                .map((p) => (
-                  <SelectItem key={p.id} value={p.id} className="text-text-main">
-                    {p.provider}/{p.model}
-                  </SelectItem>
-                ))}
-            </SelectContent>
-          </Select>
-        </CardContent>
-      </Card>
-
       {message && (
-        <p className="text-sm text-text-main/70 mt-3">{message}</p>
+        <p className="text-sm text-muted-foreground mt-3">{message}</p>
       )}
     </section>
   );

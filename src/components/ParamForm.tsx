@@ -66,7 +66,6 @@ export function ParamForm({
           {param.type === "textarea" ? (
             <Textarea
               id={param.id}
-              className="bg-panel border-border-subtle text-text-main"
               value={values[param.id] || ""}
               placeholder={param.placeholder}
               onBlur={() => setTouched((prev) => ({ ...prev, [param.id]: true }))}
@@ -78,7 +77,6 @@ export function ParamForm({
           ) : (
             <Input
               id={param.id}
-              className="bg-panel border-border-subtle text-text-main"
               value={values[param.id] || ""}
               placeholder={param.placeholder}
               required={param.required}
@@ -90,14 +88,13 @@ export function ParamForm({
             />
           )}
           {touched[param.id] && errors[param.id] ? (
-            <p className="text-sm text-destructive-red">{errors[param.id]}</p>
+            <p className="text-sm text-destructive">{errors[param.id]}</p>
           ) : null}
         </div>
       ))}
       <Button
         type="submit"
         disabled={hasError}
-        className="bg-btn-bg border border-btn-border text-text-main hover:bg-accent-blue/15"
       >
         Preview
       </Button>

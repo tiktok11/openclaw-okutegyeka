@@ -83,12 +83,12 @@ export function Doctor() {
 
   return (
     <section>
-      <h2 className="text-2xl font-bold text-text-main mb-4">Doctor</h2>
+      <h2 className="text-2xl font-bold mb-4">Doctor</h2>
 
       {/* Config Diagnostics */}
       {state.doctor && (
         <div>
-          <p className="text-sm text-text-main/70 mb-3">
+          <p className="text-sm text-muted-foreground mb-3">
             Health score: {state.doctor.score}
           </p>
           <div className="space-y-2">
@@ -186,19 +186,19 @@ export function Doctor() {
           Run Doctor
         </Button>
       ) : null}
-      <p className="text-sm text-text-main/70 mt-2">{state.message}</p>
+      <p className="text-sm text-muted-foreground mt-2">{state.message}</p>
 
       {/* Data Cleanup */}
-      <h3 className="text-lg font-semibold text-text-main mt-6 mb-3">
+      <h3 className="text-lg font-semibold mt-6 mb-3">
         Data Cleanup
       </h3>
       {dataMessage && (
-        <p className="text-sm text-text-main/70 mt-2">{dataMessage}</p>
+        <p className="text-sm text-muted-foreground mt-2">{dataMessage}</p>
       )}
 
       <div className="grid grid-cols-[repeat(auto-fit,minmax(180px,1fr))] gap-3">
         {/* Memory */}
-        <Card className="bg-panel border-border-subtle">
+        <Card>
           <CardHeader>
             <CardTitle>Memory</CardTitle>
           </CardHeader>
@@ -225,7 +225,7 @@ export function Doctor() {
         </Card>
 
         {/* Sessions */}
-        <Card className="bg-panel border-border-subtle">
+        <Card>
           <CardHeader>
             <CardTitle>Sessions</CardTitle>
           </CardHeader>

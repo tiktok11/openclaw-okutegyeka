@@ -27,14 +27,14 @@ export function App() {
 
   return (
     <div className="flex h-screen">
-      <aside className="w-[200px] min-w-[200px] bg-panel border-r border-border-subtle flex flex-col py-4">
-        <h1 className="px-4 text-lg font-bold text-text-main mb-4">ClawPal</h1>
+      <aside className="w-[200px] min-w-[200px] bg-muted border-r border-border flex flex-col py-4">
+        <h1 className="px-4 text-lg font-bold mb-4">ClawPal</h1>
         <nav className="flex flex-col gap-1 px-2">
           <Button
             variant="ghost"
             className={cn(
-              "justify-start text-text-main hover:bg-accent-blue/10",
-              (route === "home") && "bg-accent-blue/15 text-accent-blue border-l-[3px] border-accent-blue"
+              "justify-start hover:bg-accent",
+              (route === "home") && "bg-accent text-accent-foreground border-l-[3px] border-primary"
             )}
             onClick={() => setRoute("home")}
           >
@@ -43,8 +43,8 @@ export function App() {
           <Button
             variant="ghost"
             className={cn(
-              "justify-start text-text-main hover:bg-accent-blue/10",
-              (route === "recipes" || route === "install") && "bg-accent-blue/15 text-accent-blue border-l-[3px] border-accent-blue"
+              "justify-start hover:bg-accent",
+              (route === "recipes" || route === "install") && "bg-accent text-accent-foreground border-l-[3px] border-primary"
             )}
             onClick={() => setRoute("recipes")}
           >
@@ -53,8 +53,8 @@ export function App() {
           <Button
             variant="ghost"
             className={cn(
-              "justify-start text-text-main hover:bg-accent-blue/10",
-              (route === "history") && "bg-accent-blue/15 text-accent-blue border-l-[3px] border-accent-blue"
+              "justify-start hover:bg-accent",
+              (route === "history") && "bg-accent text-accent-foreground border-l-[3px] border-primary"
             )}
             onClick={() => setRoute("history")}
           >
@@ -63,19 +63,19 @@ export function App() {
           <Button
             variant="ghost"
             className={cn(
-              "justify-start text-text-main hover:bg-accent-blue/10",
-              (route === "doctor") && "bg-accent-blue/15 text-accent-blue border-l-[3px] border-accent-blue"
+              "justify-start hover:bg-accent",
+              (route === "doctor") && "bg-accent text-accent-foreground border-l-[3px] border-primary"
             )}
             onClick={() => setRoute("doctor")}
           >
             Doctor
           </Button>
-          <Separator className="my-2 bg-border-subtle" />
+          <Separator className="my-2" />
           <Button
             variant="ghost"
             className={cn(
-              "justify-start text-text-main hover:bg-accent-blue/10",
-              (route === "settings") && "bg-accent-blue/15 text-accent-blue border-l-[3px] border-accent-blue"
+              "justify-start hover:bg-accent",
+              (route === "settings") && "bg-accent text-accent-foreground border-l-[3px] border-primary"
             )}
             onClick={() => setRoute("settings")}
           >
@@ -110,7 +110,7 @@ export function App() {
         {route === "install" && (
           <Button
             variant="ghost"
-            className="mt-3 text-text-main hover:bg-accent-blue/10"
+            className="mt-3 hover:bg-accent"
             onClick={() => setRoute("recipes")}
           >
             ← Recipes

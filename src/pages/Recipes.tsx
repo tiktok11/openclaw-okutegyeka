@@ -42,20 +42,20 @@ export function Recipes({
 
   return (
     <section>
-      <h2 className="text-2xl font-bold text-text-main mb-4">Recipes</h2>
+      <h2 className="text-2xl font-bold mb-4">Recipes</h2>
       <form onSubmit={onLoadSource} className="mb-2 flex items-center gap-2">
         <Label>Recipe source (file path or URL)</Label>
         <Input
           value={source}
           onChange={(event) => setSource(event.target.value)}
           placeholder="/path/recipes.json or https://example.com/recipes.json"
-          className="w-[380px] bg-panel border-border-subtle text-text-main"
+          className="w-[380px]"
         />
         <Button type="submit" className="ml-2">
           {isLoading ? "Loading..." : "Load"}
         </Button>
       </form>
-      <p className="text-sm text-text-main/80 mt-0">
+      <p className="text-sm text-muted-foreground mt-0">
         Loaded from: {loadedSource || "builtin / clawpal recipes"}
       </p>
       <div className="grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-3">

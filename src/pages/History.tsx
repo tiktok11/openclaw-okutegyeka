@@ -19,12 +19,12 @@ export function History() {
 
   return (
     <section>
-      <h2 className="text-2xl font-bold text-text-main mb-4">History</h2>
+      <h2 className="text-2xl font-bold mb-4">History</h2>
       <div className="space-y-3">
         {state.history.map((item) => (
-          <Card key={item.id} className="bg-panel border-border-subtle">
+          <Card key={item.id}>
             <CardContent>
-              <p className="text-sm text-text-main">
+              <p className="text-sm">
                 {item.createdAt} · {item.recipeId || "manual"} · {item.source}
                 {!item.canRollback && (
                   <Badge variant="outline" className="ml-2">not rollbackable</Badge>
@@ -78,7 +78,7 @@ export function History() {
       <Button variant="outline" onClick={refreshHistory} className="mt-3">
         Refresh
       </Button>
-      <p className="text-sm text-text-main/70 mt-2">{state.message}</p>
+      <p className="text-sm text-muted-foreground mt-2">{state.message}</p>
     </section>
   );
 }
