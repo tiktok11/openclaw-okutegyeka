@@ -1,11 +1,14 @@
-import { useEffect, useReducer, useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "../lib/api";
 import { ParamForm } from "../components/ParamForm";
-import { DiffViewer } from "../components/DiffViewer";
-import { initialState, reducer } from "../lib/state";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { resolveSteps, executeStep, type ResolvedStep } from "../lib/actions";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import type { DiscordGuildChannel } from "../lib/types";
+import { cn } from "@/lib/utils";
+import type { DiscordGuildChannel, Recipe } from "../lib/types";
+
+type Phase = "params" | "confirm" | "execute" | "done";
+type StepStatus = "pending" | "running" | "done" | "failed" | "skipped";
 
 export function Cook({
   recipeId,
@@ -18,157 +21,188 @@ export function Cook({
   recipeSource?: string;
   discordGuildChannels: DiscordGuildChannel[];
 }) {
-  const [state, dispatch] = useReducer(reducer, initialState);
+  const [recipe, setRecipe] = useState<Recipe | null>(null);
   const [params, setParams] = useState<Record<string, string>>({});
-  const [isApplying, setIsApplying] = useState(false);
-  const [applied, setApplied] = useState(false);
-  const [applyError, setApplyError] = useState("");
-  const [isPreviewing, setIsPreviewing] = useState(false);
+  const [phase, setPhase] = useState<Phase>("params");
+  const [resolvedStepList, setResolvedStepList] = useState<ResolvedStep[]>([]);
+  const [stepStatuses, setStepStatuses] = useState<StepStatus[]>([]);
+  const [stepErrors, setStepErrors] = useState<Record<number, string>>({});
+  const [hasConfigPatch, setHasConfigPatch] = useState(false);
 
   useEffect(() => {
     api.listRecipes(recipeSource).then((recipes) => {
-      const recipe = recipes.find((it) => it.id === recipeId);
-      dispatch({ type: "setRecipes", recipes });
-      if (!recipe) return;
-      const defaults: Record<string, string> = {};
-      for (const p of recipe.params) {
-        defaults[p.id] = "";
+      const found = recipes.find((it) => it.id === recipeId);
+      setRecipe(found || null);
+      if (found) {
+        const defaults: Record<string, string> = {};
+        for (const p of found.params) {
+          defaults[p.id] = "";
+        }
+        setParams(defaults);
       }
-      setParams(defaults);
     });
   }, [recipeId, recipeSource]);
 
-  const recipe = state.recipes.find((r) => r.id === recipeId);
-
   if (!recipe) return <div>Recipe not found</div>;
 
-  const isCustomAction = !!recipe.action;
+  const handleNext = () => {
+    const steps = resolveSteps(recipe.steps, params);
+    setResolvedStepList(steps);
+    setStepStatuses(steps.map(() => "pending"));
+    setStepErrors({});
+    setHasConfigPatch(steps.some((s) => s.action === "config_patch"));
+    setPhase("confirm");
+  };
 
-  const handleApply = async () => {
-    setIsApplying(true);
-    setApplyError("");
-    try {
-      const result = await api.applyRecipe(recipe.id, params, recipeSource);
-      if (!result.ok) {
-        const errors = result.errors.length ? result.errors.join(", ") : "failed";
-        setApplyError(`Apply failed: ${errors}`);
+  const runFrom = async (startIndex: number, statuses: StepStatus[]) => {
+    for (let i = startIndex; i < resolvedStepList.length; i++) {
+      if (statuses[i] === "skipped") continue;
+      statuses[i] = "running";
+      setStepStatuses([...statuses]);
+      try {
+        await executeStep(resolvedStepList[i]);
+        statuses[i] = "done";
+      } catch (err) {
+        statuses[i] = "failed";
+        setStepErrors((prev) => ({ ...prev, [i]: String(err) }));
+        setStepStatuses([...statuses]);
         return;
       }
-      setApplied(true);
-    } catch (err) {
-      setApplyError(String(err));
-    } finally {
-      setIsApplying(false);
+      setStepStatuses([...statuses]);
+    }
+    setPhase("done");
+  };
+
+  const handleExecute = () => {
+    setPhase("execute");
+    const statuses: StepStatus[] = resolvedStepList.map(() => "pending");
+    setStepStatuses([...statuses]);
+    runFrom(0, statuses);
+  };
+
+  const handleRetry = (index: number) => {
+    const statuses = [...stepStatuses];
+    setStepErrors((prev) => {
+      const next = { ...prev };
+      delete next[index];
+      return next;
+    });
+    runFrom(index, statuses);
+  };
+
+  const handleSkip = (index: number) => {
+    const statuses = [...stepStatuses];
+    statuses[index] = "skipped";
+    setStepStatuses(statuses);
+    setStepErrors((prev) => {
+      const next = { ...prev };
+      delete next[index];
+      return next;
+    });
+    const nextIndex = statuses.findIndex((s, i) => i > index && s !== "skipped");
+    if (nextIndex === -1) {
+      setPhase("done");
+    } else {
+      runFrom(nextIndex, statuses);
     }
   };
 
-  const handleCustomAction = async () => {
-    setIsApplying(true);
-    setApplyError("");
-    try {
-      if (recipe.action === "setup_agent") {
-        await api.setupAgentIdentity(
-          params.agent_id,
-          params.name,
-          params.emoji || undefined,
-        );
-      } else {
-        throw new Error(`Unknown action: ${recipe.action}`);
-      }
-      setApplied(true);
-    } catch (err) {
-      setApplyError(String(err));
-    } finally {
-      setIsApplying(false);
+  const statusIcon = (s: StepStatus) => {
+    switch (s) {
+      case "pending": return "\u25CB";
+      case "running": return "\u25C9";
+      case "done": return "\u2713";
+      case "failed": return "\u2717";
+      case "skipped": return "\u2013";
     }
   };
 
-  const successMessage = isCustomAction
-    ? "Done"
-    : "Config updated";
+  const statusColor = (s: StepStatus) => {
+    switch (s) {
+      case "done": return "text-green-600";
+      case "failed": return "text-destructive";
+      case "running": return "text-primary";
+      default: return "text-muted-foreground";
+    }
+  };
 
-  const successHint = isCustomAction
-    ? "Agent identity has been updated."
-    : "Use \"Apply Changes\" in the sidebar to restart the gateway and activate the changes.";
+  const doneCount = stepStatuses.filter((s) => s === "done").length;
+  const skippedCount = stepStatuses.filter((s) => s === "skipped").length;
 
   return (
     <section>
-      <h2 className="text-2xl font-bold mb-4">
-        Cook {recipe.name}
-      </h2>
+      <h2 className="text-2xl font-bold mb-4">{recipe.name}</h2>
 
-      {applied ? (
+      {phase === "params" && (
+        <ParamForm
+          recipe={recipe}
+          values={params}
+          onChange={(id, value) => setParams((prev) => ({ ...prev, [id]: value }))}
+          onSubmit={handleNext}
+          submitLabel="Next"
+          discordGuildChannels={discordGuildChannels}
+        />
+      )}
+
+      {(phase === "confirm" || phase === "execute") && (
+        <Card>
+          <CardContent>
+            <div className="space-y-3">
+              {resolvedStepList.map((step, i) => (
+                <div key={i} className="flex items-start gap-3">
+                  <span className={cn("text-lg font-mono w-5 text-center", statusColor(stepStatuses[i]))}>
+                    {statusIcon(stepStatuses[i])}
+                  </span>
+                  <div className="flex-1">
+                    <div className="text-sm font-medium">{step.label}</div>
+                    {step.description !== step.label && (
+                      <div className="text-xs text-muted-foreground">{step.description}</div>
+                    )}
+                    {stepErrors[i] && (
+                      <div className="text-xs text-destructive mt-1">{stepErrors[i]}</div>
+                    )}
+                    {stepStatuses[i] === "failed" && (
+                      <div className="flex gap-2 mt-1.5">
+                        <Button size="sm" variant="outline" onClick={() => handleRetry(i)}>
+                          Retry
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => handleSkip(i)}>
+                          Skip
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+            {phase === "confirm" && (
+              <div className="flex gap-2 mt-4">
+                <Button onClick={handleExecute}>Execute</Button>
+                <Button variant="outline" onClick={() => setPhase("params")}>Back</Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {phase === "done" && (
         <Card>
           <CardContent className="py-8 text-center">
             <div className="text-2xl mb-2">&#10003;</div>
-            <p className="text-lg font-medium">{successMessage}</p>
-            <p className="text-sm text-muted-foreground mt-1">
-              {successHint}
+            <p className="text-lg font-medium">
+              {doneCount} step{doneCount !== 1 ? "s" : ""} completed
+              {skippedCount > 0 && `, ${skippedCount} skipped`}
             </p>
+            {hasConfigPatch && (
+              <p className="text-sm text-muted-foreground mt-1">
+                Use "Apply Changes" in the sidebar to restart the gateway and activate config changes.
+              </p>
+            )}
             <Button className="mt-4" onClick={onDone}>
               Back to Recipes
             </Button>
           </CardContent>
         </Card>
-      ) : (
-        <>
-          <ParamForm
-            recipe={recipe}
-            values={params}
-            onChange={(id, value) => setParams((prev) => ({ ...prev, [id]: value }))}
-            onSubmit={() => {
-              if (isCustomAction) {
-                handleCustomAction();
-              } else {
-                setIsPreviewing(true);
-                api.previewApply(recipe.id, params, recipeSource)
-                  .then((preview) => dispatch({ type: "setPreview", preview }))
-                  .catch((err) => dispatch({ type: "setMessage", message: String(err) }))
-                  .finally(() => setIsPreviewing(false));
-              }
-            }}
-            submitLabel={isCustomAction ? "Apply" : "Preview"}
-            discordGuildChannels={discordGuildChannels}
-          />
-          {isCustomAction && applyError && (
-            <p className="text-sm text-destructive mt-2">{applyError}</p>
-          )}
-          {isCustomAction && isApplying && (
-            <p className="text-sm text-muted-foreground mt-2">Applying...</p>
-          )}
-          {state.lastPreview && (
-            <Card className="mt-4">
-              <CardHeader>
-                <CardTitle className="text-lg font-semibold mb-2">
-                  Preview
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <DiffViewer
-                  oldValue={state.lastPreview.configBefore}
-                  newValue={state.lastPreview.configAfter}
-                />
-                <div className="flex items-center gap-3 mt-3">
-                  <Button disabled={isApplying} onClick={handleApply}>
-                    Apply
-                  </Button>
-                  {isApplying && (
-                    <span className="text-sm text-muted-foreground">Applying config...</span>
-                  )}
-                  {applyError && (
-                    <span className="text-sm text-destructive">{applyError}</span>
-                  )}
-                  {isPreviewing && (
-                    <span className="text-sm text-muted-foreground">Previewing...</span>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-          {!isCustomAction && (
-            <p className="text-sm text-muted-foreground mt-2">{state.message}</p>
-          )}
-        </>
       )}
     </section>
   );
