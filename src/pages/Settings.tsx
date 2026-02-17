@@ -19,6 +19,17 @@ import {
 } from "@/components/ui/command";
 import { ChevronsUpDown, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 type ProfileForm = {
   id: string;
@@ -172,7 +183,9 @@ export function Settings() {
   const ensureCatalog = () => {
     if (catalogRefreshed) return;
     setCatalogRefreshed(true);
-    api.refreshModelCatalog().then(setCatalog).catch(() => {});
+    api.refreshModelCatalog().then((fresh) => {
+      if (fresh.length > 0) setCatalog(fresh);
+    }).catch(() => {});
   };
 
   const maskedKeyMap = useMemo(() => {
@@ -328,13 +341,30 @@ export function Settings() {
                 <Button type="submit">Save</Button>
                 {form.id && (
                   <>
-                    <Button
-                      type="button"
-                      variant="destructive"
-                      onClick={() => deleteProfile(form.id)}
-                    >
-                      Delete
-                    </Button>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button type="button" variant="destructive">
+                          Delete
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Delete profile?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            This will permanently delete the profile "{form.provider}/{form.model}". This action cannot be undone.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction
+                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                            onClick={() => deleteProfile(form.id)}
+                          >
+                            Delete
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
                     <Button
                       type="button"
                       variant="outline"
@@ -393,14 +423,30 @@ export function Settings() {
                     >
                       Edit
                     </Button>
-                    <Button
-                      size="sm"
-                      variant="destructive"
-                      type="button"
-                      onClick={() => deleteProfile(profile.id)}
-                    >
-                      Delete
-                    </Button>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button size="sm" variant="destructive" type="button">
+                          Delete
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Delete profile?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            This will permanently delete the profile "{profile.provider}/{profile.model}". This action cannot be undone.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction
+                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                            onClick={() => deleteProfile(profile.id)}
+                          >
+                            Delete
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
                   </div>
                 </div>
               ))}

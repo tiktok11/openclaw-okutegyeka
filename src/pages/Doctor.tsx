@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useReducer, useState } from "react";
-import { api } from "../lib/api";
-import { initialState, reducer } from "../lib/state";
-import type { MemoryFile, SessionFile } from "../lib/types";
+import { api } from "@/lib/api";
+import { initialState, reducer } from "@/lib/state";
+import type { MemoryFile, SessionFile } from "@/lib/types";
 import {
   Card,
   CardHeader,
@@ -10,6 +10,17 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 function formatBytes(bytes: number) {
   if (bytes <= 0) return "0 B";
@@ -28,6 +39,7 @@ export function Doctor() {
   const [memoryFiles, setMemoryFiles] = useState<MemoryFile[]>([]);
   const [sessionFiles, setSessionFiles] = useState<SessionFile[]>([]);
   const [dataMessage, setDataMessage] = useState("");
+  const [refreshing, setRefreshing] = useState(false);
 
   const hasReport = Boolean(state.doctor);
   const autoFixable = hasReport
@@ -154,7 +166,9 @@ export function Doctor() {
             </Button>
             <Button
               variant="outline"
-              onClick={() =>
+              disabled={refreshing}
+              onClick={() => {
+                setRefreshing(true);
                 api
                   .runDoctor()
                   .then((report) =>
@@ -166,9 +180,10 @@ export function Doctor() {
                       message: "Refresh failed",
                     }),
                   )
-              }
+                  .finally(() => setRefreshing(false));
+              }}
             >
-              Refresh
+              {refreshing ? "Refreshing..." : "Refresh"}
             </Button>
           </div>
         </div>
@@ -206,21 +221,57 @@ export function Doctor() {
             <p className="text-sm mb-2">
               {memoryFiles.length} files ({formatBytes(totalMemoryBytes)})
             </p>
-            <Button
-              size="sm"
-              disabled={memoryFiles.length === 0}
-              onClick={() => {
-                api
-                  .clearMemory()
-                  .then((count) => {
-                    setDataMessage(`Cleared ${count} memory file(s)`);
-                    refreshData();
-                  })
-                  .catch(() => setDataMessage("Failed to clear memory"));
-              }}
-            >
-              Clear all memory
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={memoryFiles.length === 0}
+                onClick={() => {
+                  const memoryDir = memoryFiles.length > 0
+                    ? memoryFiles[0].path.substring(0, memoryFiles[0].path.lastIndexOf("/"))
+                    : "";
+                  if (memoryDir) api.openUrl(memoryDir);
+                }}
+              >
+                Show
+              </Button>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    disabled={memoryFiles.length === 0}
+                  >
+                    Clear all memory
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Clear all memory?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This will permanently delete {memoryFiles.length} memory file(s). This action cannot be undone.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction
+                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                      onClick={() => {
+                        api
+                          .clearMemory()
+                          .then((count) => {
+                            setDataMessage(`Cleared ${count} memory file(s)`);
+                            refreshData();
+                          })
+                          .catch(() => setDataMessage("Failed to clear memory"));
+                      }}
+                    >
+                      Clear
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </div>
           </CardContent>
         </Card>
 
@@ -243,41 +294,106 @@ export function Doctor() {
                 </span>
                 <Button
                   size="sm"
+                  variant="outline"
                   onClick={() => {
-                    api
-                      .clearAgentSessions(a.agent)
-                      .then((count) => {
-                        setDataMessage(
-                          `Cleared ${count} session file(s) for ${a.agent}`,
-                        );
-                        refreshData();
-                      })
-                      .catch(() =>
-                        setDataMessage(
-                          `Failed to clear sessions for ${a.agent}`,
-                        ),
-                      );
+                    const agentFile = sessionFiles.find(f => f.agent === a.agent);
+                    const agentDir = agentFile ? agentFile.path.substring(0, agentFile.path.lastIndexOf("/")) : "";
+                    if (agentDir) api.openUrl(agentDir);
                   }}
                 >
-                  Clear
+                  Show
                 </Button>
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button size="sm" variant="destructive">
+                      Clear
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Clear sessions for {a.agent}?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        This will permanently delete {a.count} session file(s) for {a.agent}. This action cannot be undone.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction
+                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                        onClick={() => {
+                          api
+                            .clearAgentSessions(a.agent)
+                            .then((count) => {
+                              setDataMessage(
+                                `Cleared ${count} session file(s) for ${a.agent}`,
+                              );
+                              refreshData();
+                            })
+                            .catch(() =>
+                              setDataMessage(
+                                `Failed to clear sessions for ${a.agent}`,
+                              ),
+                            );
+                        }}
+                      >
+                        Clear
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
               </div>
             ))}
-            <Button
-              size="sm"
-              disabled={sessionFiles.length === 0}
-              onClick={() => {
-                api
-                  .clearAllSessions()
-                  .then((count) => {
-                    setDataMessage(`Cleared ${count} session file(s)`);
-                    refreshData();
-                  })
-                  .catch(() => setDataMessage("Failed to clear sessions"));
-              }}
-            >
-              Clear all sessions
-            </Button>
+            <div className="flex gap-2 mt-2">
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={sessionFiles.length === 0}
+                onClick={() => {
+                  const sessionsDir = sessionFiles.length > 0
+                    ? sessionFiles[0].path.substring(0, sessionFiles[0].path.lastIndexOf("/"))
+                    : "";
+                  if (sessionsDir) api.openUrl(sessionsDir);
+                }}
+              >
+                Show
+              </Button>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    disabled={sessionFiles.length === 0}
+                  >
+                    Clear all sessions
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Clear all sessions?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This will permanently delete {sessionFiles.length} session file(s). This action cannot be undone.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction
+                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                      onClick={() => {
+                        api
+                          .clearAllSessions()
+                          .then((count) => {
+                            setDataMessage(`Cleared ${count} session file(s)`);
+                            refreshData();
+                          })
+                          .catch(() => setDataMessage("Failed to clear sessions"));
+                      }}
+                    >
+                      Clear
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </div>
           </CardContent>
         </Card>
       </div>
