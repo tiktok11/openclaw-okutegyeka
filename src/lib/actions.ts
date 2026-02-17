@@ -14,7 +14,7 @@ function renderArgs(
     if (typeof value === "string") {
       let rendered = value;
       for (const [paramId, paramValue] of Object.entries(params)) {
-        rendered = rendered.replaceAll(`{{${paramId}}}`, paramValue);
+        rendered = rendered.split(`{{${paramId}}}`).join(paramValue);
       }
       result[key] = rendered;
     } else {

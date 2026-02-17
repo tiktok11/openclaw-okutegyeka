@@ -342,7 +342,7 @@ export function Home({ onCook }: { onCook?: (recipeId: string, source?: string) 
                     {recipe.description}
                   </div>
                   <div className="text-xs text-muted-foreground mt-2">
-                    {recipe.difficulty} &middot; {recipe.impactCategory}
+                    {recipe.steps.length} step{recipe.steps.length !== 1 ? "s" : ""} &middot; {recipe.difficulty}
                   </div>
                 </CardContent>
               </Card>

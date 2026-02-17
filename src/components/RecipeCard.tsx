@@ -18,7 +18,9 @@ export function RecipeCard({ recipe, onCook }: { recipe: Recipe; onCook: (id: st
             </Badge>
           ))}
         </div>
-        <p className="text-sm text-muted-foreground">Impact: {recipe.impactCategory}</p>
+        <p className="text-sm text-muted-foreground">
+          {recipe.steps.length} step{recipe.steps.length !== 1 ? "s" : ""} &middot; {recipe.difficulty}
+        </p>
       </CardContent>
       <CardFooter>
         <Button onClick={() => onCook(recipe.id)}>

@@ -81,10 +81,7 @@ export async function executeToolCall(name: string, args: Record<string, unknown
       return JSON.stringify(recipes.map((r) => ({ id: r.id, name: r.name, description: r.description })), null, 2);
     }
     case "preview_change": {
-      const recipeId = args.recipe_id as string;
-      const params = args.params as Record<string, string>;
-      const preview = await api.previewApply(recipeId, params);
-      return JSON.stringify({ diff: preview.diff, warnings: preview.warnings, impactLevel: preview.impactLevel });
+      return "Preview is no longer available. Use the Recipes tab to execute recipes.";
     }
     case "run_doctor": {
       const report = await api.runDoctor();

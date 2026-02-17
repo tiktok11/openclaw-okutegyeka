@@ -1,8 +1,7 @@
-import { useEffect, useReducer, useState } from "react";
+import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { api } from "../lib/api";
 import { RecipeCard } from "../components/RecipeCard";
-import { initialState, reducer } from "../lib/state";
 import type { Recipe } from "../lib/types";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -13,7 +12,7 @@ export function Recipes({
 }: {
   onCook: (id: string, source?: string) => void;
 }) {
-  const [state, dispatch] = useReducer(reducer, initialState);
+  const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [source, setSource] = useState("");
   const [loadedSource, setLoadedSource] = useState<string | undefined>(undefined);
   const [isLoading, setIsLoading] = useState(false);
@@ -23,11 +22,11 @@ export function Recipes({
     const value = nextSource.trim();
     api
       .listRecipes(value || undefined)
-      .then((recipes) => {
+      .then((r) => {
         setLoadedSource(value || undefined);
-        dispatch({ type: "setRecipes", recipes });
+        setRecipes(r);
       })
-      .catch(() => dispatch({ type: "setMessage", message: "Failed to load recipes" }))
+      .catch(() => {})
       .finally(() => setIsLoading(false));
   };
 
@@ -59,7 +58,7 @@ export function Recipes({
         Loaded from: {loadedSource || "builtin / clawpal recipes"}
       </p>
       <div className="grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-3">
-        {state.recipes.map((recipe: Recipe) => (
+        {recipes.map((recipe) => (
           <RecipeCard
             key={recipe.id}
             recipe={recipe}
