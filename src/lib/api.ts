@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AgentOverview, ApplyResult, HistoryItem, ModelCatalogProvider, ModelProfile, PreviewResult, Recipe, ResolvedApiKey, StatusLight, SystemStatus, DoctorReport, MemoryFile, SessionFile } from "./types";
+import type { AgentOverview, ApplyResult, BackupInfo, HistoryItem, ModelCatalogProvider, ModelProfile, PreviewResult, Recipe, ResolvedApiKey, StatusLight, SystemStatus, DoctorReport, MemoryFile, SessionFile } from "./types";
 
 export const api = {
   getSystemStatus: (): Promise<SystemStatus> =>
@@ -64,4 +64,12 @@ export const api = {
     invoke("open_url", { url }),
   chatViaOpenclaw: (agentId: string, message: string, sessionId?: string): Promise<Record<string, unknown>> =>
     invoke("chat_via_openclaw", { agentId, message, sessionId }),
+  backupBeforeUpgrade: (): Promise<BackupInfo> =>
+    invoke("backup_before_upgrade", {}),
+  listBackups: (): Promise<BackupInfo[]> =>
+    invoke("list_backups", {}),
+  restoreFromBackup: (backupName: string): Promise<string> =>
+    invoke("restore_from_backup", { backupName }),
+  deleteBackup: (backupName: string): Promise<boolean> =>
+    invoke("delete_backup", { backupName }),
 };

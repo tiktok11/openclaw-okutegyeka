@@ -7,6 +7,7 @@ use crate::commands::{
     delete_session_file, clear_all_sessions, clear_agent_sessions,
     preview_rollback, rollback, run_doctor_command,
     resolve_api_keys, read_raw_config, resolve_full_api_key, open_url, chat_via_openclaw,
+    backup_before_upgrade, list_backups, restore_from_backup, delete_backup,
 };
 
 pub mod commands;
@@ -51,6 +52,10 @@ pub fn run() {
             resolve_full_api_key,
             open_url,
             chat_via_openclaw,
+            backup_before_upgrade,
+            list_backups,
+            restore_from_backup,
+            delete_backup,
         ])
         .run(tauri::generate_context!())
         .expect("failed to run app");

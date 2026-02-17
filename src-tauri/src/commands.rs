@@ -2678,6 +2678,190 @@ pub async fn chat_via_openclaw(agent_id: String, message: String, session_id: Op
     .map_err(|e| format!("Task join failed: {}", e))?
 }
 
+// ---- Backup / Restore ----
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BackupInfo {
+    pub name: String,
+    pub path: String,
+    pub created_at: String,
+    pub size_bytes: u64,
+}
+
+#[tauri::command]
+pub fn backup_before_upgrade() -> Result<BackupInfo, String> {
+    let paths = resolve_paths();
+    let backups_dir = paths.clawpal_dir.join("backups");
+    fs::create_dir_all(&backups_dir).map_err(|e| format!("Failed to create backups dir: {e}"))?;
+
+    let now_secs = unix_timestamp_secs();
+    let now_dt = chrono::DateTime::<chrono::Utc>::from_timestamp(now_secs as i64, 0);
+    let name = now_dt
+        .map(|dt| dt.format("%Y-%m-%d_%H%M%S").to_string())
+        .unwrap_or_else(|| format!("{now_secs}"));
+    let backup_dir = backups_dir.join(&name);
+    fs::create_dir_all(&backup_dir).map_err(|e| format!("Failed to create backup dir: {e}"))?;
+
+    let mut total_bytes = 0u64;
+
+    // Copy config file
+    if paths.config_path.exists() {
+        let dest = backup_dir.join("openclaw.json");
+        fs::copy(&paths.config_path, &dest).map_err(|e| format!("Failed to copy config: {e}"))?;
+        total_bytes += fs::metadata(&dest).map(|m| m.len()).unwrap_or(0);
+    }
+
+    // Copy directories, excluding sessions and archive
+    let skip_dirs: HashSet<&str> = ["sessions", "archive", ".clawpal"].iter().copied().collect();
+    copy_dir_recursive(&paths.base_dir, &backup_dir, &skip_dirs, &mut total_bytes)?;
+
+    Ok(BackupInfo {
+        name: name.clone(),
+        path: backup_dir.to_string_lossy().to_string(),
+        created_at: format_timestamp_from_unix(now_secs),
+        size_bytes: total_bytes,
+    })
+}
+
+fn copy_dir_recursive(src: &Path, dst: &Path, skip_dirs: &HashSet<&str>, total: &mut u64) -> Result<(), String> {
+    let entries = fs::read_dir(src).map_err(|e| format!("Failed to read dir {}: {e}", src.display()))?;
+    for entry in entries {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let name = entry.file_name();
+        let name_str = name.to_string_lossy();
+
+        // Skip the config file (already copied separately) and skip dirs
+        if name_str == "openclaw.json" {
+            continue;
+        }
+
+        let file_type = entry.file_type().map_err(|e| e.to_string())?;
+        let dest = dst.join(&name);
+
+        if file_type.is_dir() {
+            if skip_dirs.contains(name_str.as_ref()) {
+                continue;
+            }
+            fs::create_dir_all(&dest).map_err(|e| format!("Failed to create dir {}: {e}", dest.display()))?;
+            copy_dir_recursive(&entry.path(), &dest, skip_dirs, total)?;
+        } else if file_type.is_file() {
+            fs::copy(entry.path(), &dest).map_err(|e| format!("Failed to copy {}: {e}", name_str))?;
+            *total += fs::metadata(&dest).map(|m| m.len()).unwrap_or(0);
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn list_backups() -> Result<Vec<BackupInfo>, String> {
+    let paths = resolve_paths();
+    let backups_dir = paths.clawpal_dir.join("backups");
+    if !backups_dir.exists() {
+        return Ok(Vec::new());
+    }
+    let mut backups = Vec::new();
+    let entries = fs::read_dir(&backups_dir).map_err(|e| e.to_string())?;
+    for entry in entries {
+        let entry = entry.map_err(|e| e.to_string())?;
+        if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+            continue;
+        }
+        let name = entry.file_name().to_string_lossy().to_string();
+        let path = entry.path();
+        let size = dir_size(&path);
+        let created_at = fs::metadata(&path)
+            .and_then(|m| m.created())
+            .map(|t| {
+                let secs = t.duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
+                format_timestamp_from_unix(secs)
+            })
+            .unwrap_or_else(|_| name.clone());
+        backups.push(BackupInfo {
+            name,
+            path: path.to_string_lossy().to_string(),
+            created_at,
+            size_bytes: size,
+        });
+    }
+    backups.sort_by(|a, b| b.name.cmp(&a.name));
+    Ok(backups)
+}
+
+fn dir_size(path: &Path) -> u64 {
+    let mut total = 0u64;
+    if let Ok(entries) = fs::read_dir(path) {
+        for entry in entries.flatten() {
+            if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                total += dir_size(&entry.path());
+            } else {
+                total += fs::metadata(entry.path()).map(|m| m.len()).unwrap_or(0);
+            }
+        }
+    }
+    total
+}
+
+#[tauri::command]
+pub fn restore_from_backup(backup_name: String) -> Result<String, String> {
+    let paths = resolve_paths();
+    let backup_dir = paths.clawpal_dir.join("backups").join(&backup_name);
+    if !backup_dir.exists() {
+        return Err(format!("Backup '{}' not found", backup_name));
+    }
+
+    // Restore config file
+    let backup_config = backup_dir.join("openclaw.json");
+    if backup_config.exists() {
+        fs::copy(&backup_config, &paths.config_path)
+            .map_err(|e| format!("Failed to restore config: {e}"))?;
+    }
+
+    // Restore other directories (agents except sessions/archive, memory, etc.)
+    let skip_dirs: HashSet<&str> = ["sessions", "archive", ".clawpal"].iter().copied().collect();
+    restore_dir_recursive(&backup_dir, &paths.base_dir, &skip_dirs)?;
+
+    Ok(format!("Restored from backup '{}'", backup_name))
+}
+
+fn restore_dir_recursive(src: &Path, dst: &Path, skip_dirs: &HashSet<&str>) -> Result<(), String> {
+    let entries = fs::read_dir(src).map_err(|e| format!("Failed to read backup dir: {e}"))?;
+    for entry in entries {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let name = entry.file_name();
+        let name_str = name.to_string_lossy();
+
+        if name_str == "openclaw.json" {
+            continue; // Already restored separately
+        }
+
+        let file_type = entry.file_type().map_err(|e| e.to_string())?;
+        let dest = dst.join(&name);
+
+        if file_type.is_dir() {
+            if skip_dirs.contains(name_str.as_ref()) {
+                continue;
+            }
+            fs::create_dir_all(&dest).map_err(|e| e.to_string())?;
+            restore_dir_recursive(&entry.path(), &dest, skip_dirs)?;
+        } else if file_type.is_file() {
+            fs::copy(entry.path(), &dest).map_err(|e| format!("Failed to restore {}: {e}", name_str))?;
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn delete_backup(backup_name: String) -> Result<bool, String> {
+    let paths = resolve_paths();
+    let backup_dir = paths.clawpal_dir.join("backups").join(&backup_name);
+    if !backup_dir.exists() {
+        return Ok(false);
+    }
+    fs::remove_dir_all(&backup_dir).map_err(|e| format!("Failed to delete backup: {e}"))?;
+    Ok(true)
+}
+
 fn resolve_model_provider_base_url(cfg: &Value, provider: &str) -> Option<String> {
     let provider = provider.trim();
     if provider.is_empty() {

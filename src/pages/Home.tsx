@@ -13,6 +13,8 @@ export function Home() {
   const [agents, setAgents] = useState<AgentOverview[]>([]);
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [backingUp, setBackingUp] = useState(false);
+  const [backupMessage, setBackupMessage] = useState("");
 
   // Fast calls: render immediately
   useEffect(() => {
@@ -69,18 +71,42 @@ export function Home() {
               <div className="text-lg mt-1">
                 {version || "..."}
               </div>
-              {updateInfo?.available && (
+              {updateInfo?.available && updateInfo.latest && updateInfo.latest !== version && (
                 <div className="mt-1">
                   <div className="text-sm text-primary mt-1">
                     Update available: {updateInfo.latest}
                   </div>
-                  <Button
-                    size="sm"
-                    className="mt-1.5 text-xs"
-                    onClick={() => api.openUrl("https://github.com/openclaw/openclaw/releases")}
-                  >
-                    View update
-                  </Button>
+                  <div className="flex gap-1.5 mt-1.5">
+                    <Button
+                      size="sm"
+                      className="text-xs"
+                      variant="outline"
+                      onClick={() => api.openUrl("https://github.com/openclaw/openclaw/releases")}
+                    >
+                      View update
+                    </Button>
+                    <Button
+                      size="sm"
+                      className="text-xs"
+                      disabled={backingUp}
+                      onClick={() => {
+                        setBackingUp(true);
+                        setBackupMessage("");
+                        api.backupBeforeUpgrade()
+                          .then((info) => {
+                            setBackupMessage(`Backup created: ${info.name}`);
+                            api.openUrl("https://github.com/openclaw/openclaw/releases");
+                          })
+                          .catch(() => setBackupMessage("Backup failed"))
+                          .finally(() => setBackingUp(false));
+                      }}
+                    >
+                      {backingUp ? "Backing up..." : "Backup & Upgrade"}
+                    </Button>
+                  </div>
+                  {backupMessage && (
+                    <p className="text-xs text-muted-foreground mt-1">{backupMessage}</p>
+                  )}
                 </div>
               )}
             </CardContent>

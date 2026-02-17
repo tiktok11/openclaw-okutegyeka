@@ -167,3 +167,10 @@ export interface StatusLight {
   activeAgents: number;
   globalDefaultModel?: string;
 }
+
+export interface BackupInfo {
+  name: string;
+  path: string;
+  createdAt: string;
+  sizeBytes: number;
+}

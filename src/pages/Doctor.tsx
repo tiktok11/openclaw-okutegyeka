@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useReducer, useState } from "react";
 import { api } from "@/lib/api";
 import { initialState, reducer } from "@/lib/state";
-import type { MemoryFile, SessionFile } from "@/lib/types";
+import type { BackupInfo, MemoryFile, SessionFile } from "@/lib/types";
 import {
   Card,
   CardHeader,
@@ -38,6 +38,7 @@ export function Doctor() {
   const [state, dispatch] = useReducer(reducer, initialState);
   const [memoryFiles, setMemoryFiles] = useState<MemoryFile[]>([]);
   const [sessionFiles, setSessionFiles] = useState<SessionFile[]>([]);
+  const [backups, setBackups] = useState<BackupInfo[]>([]);
   const [dataMessage, setDataMessage] = useState("");
   const [refreshing, setRefreshing] = useState(false);
 
@@ -91,6 +92,10 @@ export function Doctor() {
         dispatch({ type: "setMessage", message: "Failed to run doctor" }),
       );
     refreshData();
+  }, []);
+
+  useEffect(() => {
+    api.listBackups().then(setBackups).catch(() => {});
   }, []);
 
   return (
@@ -397,6 +402,94 @@ export function Doctor() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Backups */}
+      <h3 className="text-lg font-semibold mt-6 mb-3">Backups</h3>
+      {backups.length === 0 ? (
+        <p className="text-muted-foreground text-sm">No backups available.</p>
+      ) : (
+        <div className="space-y-2">
+          {backups.map((backup) => (
+            <Card key={backup.name}>
+              <CardContent className="flex items-center justify-between">
+                <div>
+                  <div className="font-medium text-sm">{backup.name}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {backup.createdAt} — {formatBytes(backup.sizeBytes)}
+                  </div>
+                </div>
+                <div className="flex gap-1.5">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => api.openUrl(backup.path)}
+                  >
+                    Show
+                  </Button>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button size="sm" variant="outline">
+                        Restore
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Restore from backup?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          This will restore config and workspace files from backup "{backup.name}". Current files will be overwritten. Session data will not be affected.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                          onClick={() => {
+                            api.restoreFromBackup(backup.name)
+                              .then((msg) => setDataMessage(msg))
+                              .catch(() => setDataMessage("Restore failed"));
+                          }}
+                        >
+                          Restore
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button size="sm" variant="destructive">
+                        Delete
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Delete backup?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          This will permanently delete backup "{backup.name}". This action cannot be undone.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                          onClick={() => {
+                            api.deleteBackup(backup.name)
+                              .then(() => {
+                                setDataMessage(`Deleted backup "${backup.name}"`);
+                                api.listBackups().then(setBackups).catch(() => {});
+                              })
+                              .catch(() => setDataMessage("Delete failed"));
+                          }}
+                        >
+                          Delete
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
     </section>
   );
 }
