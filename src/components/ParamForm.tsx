@@ -223,7 +223,7 @@ export function ParamForm({
               <span className="text-muted-foreground">Use global default</span>
             </SelectItem>
             {enabledProfiles.map((p) => (
-              <SelectItem key={p.id} value={`${p.provider}/${p.model}`}>
+              <SelectItem key={p.id} value={p.id}>
                 {p.provider}/{p.model}
               </SelectItem>
             ))}

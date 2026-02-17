@@ -17,7 +17,7 @@ function renderArgs(
       if (singleMatch) {
         const paramValue = params[singleMatch[1]] ?? "";
         if (paramValue === "true") result[key] = true;
-        else if (paramValue === "false" || paramValue === "") result[key] = false;
+        else if (paramValue === "false") result[key] = false;
         else result[key] = paramValue;
       } else {
         let rendered = value;
