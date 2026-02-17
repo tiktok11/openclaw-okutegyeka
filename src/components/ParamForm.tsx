@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -91,9 +92,15 @@ export function ParamForm({
     return discordGuildChannels.filter((gc) => gc.guildId === guildId);
   }, [discordGuildChannels, values]);
 
+  const isParamVisible = (param: RecipeParam) => {
+    if (!param.dependsOn) return true;
+    return values[param.dependsOn] === "true";
+  };
+
   const errors = useMemo(() => {
     const next: Record<string, string> = {};
     for (const param of recipe.params) {
+      if (!isParamVisible(param)) continue;
       const err = validateField(param, values[param.id] || "");
       if (err) {
         next[param.id] = err;
@@ -104,6 +111,21 @@ export function ParamForm({
   const hasError = Object.keys(errors).length > 0;
 
   function renderParam(param: RecipeParam) {
+    if (param.type === "boolean") {
+      return (
+        <div className="flex items-center gap-2">
+          <Checkbox
+            id={param.id}
+            checked={values[param.id] === "true"}
+            onCheckedChange={(checked) => {
+              onChange(param.id, checked === true ? "true" : "false");
+            }}
+          />
+          <Label htmlFor={param.id} className="font-normal">{param.label}</Label>
+        </div>
+      );
+    }
+
     if (param.type === "discord_guild") {
       return (
         <Select
@@ -245,15 +267,19 @@ export function ParamForm({
       }
       onSubmit();
     }}>
-      {recipe.params.map((param: RecipeParam) => (
-        <div key={param.id} className="space-y-1.5">
-          <Label htmlFor={param.id}>{param.label}</Label>
-          {renderParam(param)}
-          {touched[param.id] && errors[param.id] ? (
-            <p className="text-sm text-destructive">{errors[param.id]}</p>
-          ) : null}
-        </div>
-      ))}
+      {recipe.params.map((param: RecipeParam) => {
+        if (!isParamVisible(param)) return null;
+        const isBool = param.type === "boolean";
+        return (
+          <div key={param.id} className="space-y-1.5">
+            {!isBool && <Label htmlFor={param.id}>{param.label}</Label>}
+            {renderParam(param)}
+            {touched[param.id] && errors[param.id] ? (
+              <p className="text-sm text-destructive">{errors[param.id]}</p>
+            ) : null}
+          </div>
+        );
+      })}
       <Button
         type="submit"
         disabled={hasError}

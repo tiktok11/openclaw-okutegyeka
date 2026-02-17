@@ -16,6 +16,7 @@ export interface RecipeParam {
   minLength?: number;
   maxLength?: number;
   placeholder?: string;
+  dependsOn?: string;
 }
 
 export interface RecipeStep {

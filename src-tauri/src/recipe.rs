@@ -28,6 +28,8 @@ pub struct RecipeParam {
     pub max_length: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub placeholder: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub depends_on: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

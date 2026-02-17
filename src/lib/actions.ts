@@ -12,11 +12,20 @@ function renderArgs(
   const result: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(args)) {
     if (typeof value === "string") {
-      let rendered = value;
-      for (const [paramId, paramValue] of Object.entries(params)) {
-        rendered = rendered.split(`{{${paramId}}}`).join(paramValue);
+      // If the entire value is a single template like "{{param}}", resolve to native type
+      const singleMatch = value.match(/^\{\{(\w+)\}\}$/);
+      if (singleMatch) {
+        const paramValue = params[singleMatch[1]] ?? "";
+        if (paramValue === "true") result[key] = true;
+        else if (paramValue === "false" || paramValue === "") result[key] = false;
+        else result[key] = paramValue;
+      } else {
+        let rendered = value;
+        for (const [paramId, paramValue] of Object.entries(params)) {
+          rendered = rendered.split(`{{${paramId}}}`).join(paramValue);
+        }
+        result[key] = rendered;
       }
-      result[key] = rendered;
     } else {
       result[key] = value;
     }
