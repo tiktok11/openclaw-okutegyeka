@@ -8,6 +8,9 @@ use crate::commands::{
     preview_rollback, rollback, run_doctor_command,
     resolve_api_keys, read_raw_config, resolve_full_api_key, open_url, chat_via_openclaw,
     backup_before_upgrade, list_backups, restore_from_backup, delete_backup,
+    list_discord_guild_channels,
+    refresh_discord_guild_channels,
+    restart_gateway,
 };
 
 pub mod commands;
@@ -56,6 +59,9 @@ pub fn run() {
             list_backups,
             restore_from_backup,
             delete_backup,
+            list_discord_guild_channels,
+            refresh_discord_guild_channels,
+            restart_gateway,
         ])
         .run(tauri::generate_context!())
         .expect("failed to run app");

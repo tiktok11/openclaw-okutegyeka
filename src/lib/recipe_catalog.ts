@@ -9,23 +9,15 @@ export const builtinRecipes = [
     params: [
       {
         id: "guild_id",
-        label: "Guild ID",
-        type: "string",
+        label: "Guild",
+        type: "discord_guild",
         required: true,
-        pattern: "^[0-9]+$",
-        minLength: 17,
-        maxLength: 20,
-        placeholder: "Copy guild id",
       },
       {
         id: "channel_id",
-        label: "Channel ID",
-        type: "string",
+        label: "Channel",
+        type: "discord_channel",
         required: true,
-        pattern: "^[0-9]+$",
-        minLength: 17,
-        maxLength: 20,
-        placeholder: "Copy channel id",
       },
       {
         id: "persona",

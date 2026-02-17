@@ -1,31 +1,48 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Home } from "./pages/Home";
 import { Recipes } from "./pages/Recipes";
-import { Install } from "./pages/Install";
+import { Cook } from "./pages/Cook";
 import { History } from "./pages/History";
 import { Doctor } from "./pages/Doctor";
 import { Settings } from "./pages/Settings";
+import { Channels } from "./pages/Channels";
+import { GlobalLoading } from "./components/GlobalLoading";
 import { api } from "./lib/api";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
+import type { DiscordGuildChannel } from "./lib/types";
 
-type Route = "home" | "recipes" | "install" | "history" | "doctor" | "settings";
+type Route = "home" | "recipes" | "cook" | "history" | "channels" | "doctor" | "settings";
 
 export function App() {
   const [route, setRoute] = useState<Route>("home");
   const [recipeId, setRecipeId] = useState<string | null>(null);
   const [recipeSource, setRecipeSource] = useState<string | undefined>(undefined);
+  const [discordGuildChannels, setDiscordGuildChannels] = useState<DiscordGuildChannel[]>([]);
+  const [globalLoading, setGlobalLoading] = useState<string | null>(null);
 
+  // Load Discord data from cache on startup (instant, no subprocess)
   useEffect(() => {
     if (!localStorage.getItem("clawpal_profiles_extracted")) {
       api.extractModelProfilesFromConfig()
         .then(() => localStorage.setItem("clawpal_profiles_extracted", "1"))
         .catch(() => {});
     }
+    api.listDiscordGuildChannels().then(setDiscordGuildChannels).catch(() => {});
+  }, []);
+
+  const refreshDiscord = useCallback(() => {
+    setGlobalLoading("Resolving Discord channel names...");
+    api.refreshDiscordGuildChannels()
+      .then(setDiscordGuildChannels)
+      .catch(() => {})
+      .finally(() => setGlobalLoading(null));
   }, []);
 
   return (
+    <>
+    {globalLoading && <GlobalLoading message={globalLoading} />}
     <div className="flex h-screen">
       <aside className="w-[200px] min-w-[200px] bg-muted border-r border-border flex flex-col py-4">
         <h1 className="px-4 text-lg font-bold mb-4">ClawPal</h1>
@@ -44,11 +61,21 @@ export function App() {
             variant="ghost"
             className={cn(
               "justify-start hover:bg-accent",
-              (route === "recipes" || route === "install") && "bg-accent text-accent-foreground border-l-[3px] border-primary"
+              (route === "recipes" || route === "cook") && "bg-accent text-accent-foreground border-l-[3px] border-primary"
             )}
             onClick={() => setRoute("recipes")}
           >
             Recipes
+          </Button>
+          <Button
+            variant="ghost"
+            className={cn(
+              "justify-start hover:bg-accent",
+              (route === "channels") && "bg-accent text-accent-foreground border-l-[3px] border-primary"
+            )}
+            onClick={() => setRoute("channels")}
+          >
+            Channels
           </Button>
           <Button
             variant="ghost"
@@ -87,27 +114,34 @@ export function App() {
         {route === "home" && <Home />}
         {route === "recipes" && (
           <Recipes
-            onInstall={(id, source) => {
+            onCook={(id, source) => {
               setRecipeId(id);
               setRecipeSource(source);
-              setRoute("install");
+              setRoute("cook");
             }}
           />
         )}
-        {route === "install" && recipeId && (
-          <Install
+        {route === "cook" && recipeId && (
+          <Cook
             recipeId={recipeId}
             recipeSource={recipeSource}
+            discordGuildChannels={discordGuildChannels}
             onDone={() => {
               setRoute("recipes");
             }}
           />
         )}
-        {route === "install" && !recipeId && <p>No recipe selected.</p>}
+        {route === "cook" && !recipeId && <p>No recipe selected.</p>}
+        {route === "channels" && (
+          <Channels
+            discordGuildChannels={discordGuildChannels}
+            onRefresh={refreshDiscord}
+          />
+        )}
         {route === "history" && <History />}
         {route === "doctor" && <Doctor />}
         {route === "settings" && <Settings />}
-        {route === "install" && (
+        {route === "cook" && (
           <Button
             variant="ghost"
             className="mt-3 hover:bg-accent"
@@ -118,5 +152,6 @@ export function App() {
         )}
       </main>
     </div>
+    </>
   );
 }

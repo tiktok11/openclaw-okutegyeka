@@ -3,7 +3,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
-export function RecipeCard({ recipe, onInstall }: { recipe: Recipe; onInstall: (id: string) => void }) {
+export function RecipeCard({ recipe, onCook }: { recipe: Recipe; onCook: (id: string) => void }) {
   return (
     <Card>
       <CardHeader>
@@ -21,8 +21,8 @@ export function RecipeCard({ recipe, onInstall }: { recipe: Recipe; onInstall: (
         <p className="text-sm text-muted-foreground">Impact: {recipe.impactCategory}</p>
       </CardContent>
       <CardFooter>
-        <Button onClick={() => onInstall(recipe.id)}>
-          Install
+        <Button onClick={() => onCook(recipe.id)}>
+          Cook
         </Button>
       </CardFooter>
     </Card>

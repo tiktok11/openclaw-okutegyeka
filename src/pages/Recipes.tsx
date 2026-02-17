@@ -9,9 +9,9 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 
 export function Recipes({
-  onInstall,
+  onCook,
 }: {
-  onInstall: (id: string, source?: string) => void;
+  onCook: (id: string, source?: string) => void;
 }) {
   const [state, dispatch] = useReducer(reducer, initialState);
   const [source, setSource] = useState("");
@@ -63,7 +63,7 @@ export function Recipes({
           <RecipeCard
             key={recipe.id}
             recipe={recipe}
-            onInstall={() => onInstall(recipe.id, loadedSource)}
+            onCook={() => onCook(recipe.id, loadedSource)}
           />
         ))}
       </div>

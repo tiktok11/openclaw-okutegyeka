@@ -1,9 +1,31 @@
-import { ScrollArea } from "@/components/ui/scroll-area";
+import ReactDiffViewer from "react-diff-viewer-continued";
 
-export function DiffViewer({ value }: { value: string }) {
+/** Strip trailing commas from JSON lines so adding a new last property
+ *  doesn't cause a spurious diff on the previous line. */
+function normalizeJsonForDiff(text: string): string {
+  return text
+    .split("\n")
+    .map((line) => line.replace(/,(\s*)$/, "$1"))
+    .join("\n");
+}
+
+export function DiffViewer({
+  oldValue,
+  newValue,
+}: {
+  oldValue: string;
+  newValue: string;
+}) {
   return (
-    <ScrollArea className="max-h-[260px] rounded-lg bg-muted p-3">
-      <pre className="text-sm whitespace-pre-wrap">{value}</pre>
-    </ScrollArea>
+    <div className="max-h-[400px] overflow-auto rounded-lg border">
+      <ReactDiffViewer
+        oldValue={normalizeJsonForDiff(oldValue)}
+        newValue={normalizeJsonForDiff(newValue)}
+        splitView={false}
+        hideLineNumbers={false}
+        showDiffOnly={true}
+        extraLinesSurroundingDiff={3}
+      />
+    </div>
   );
 }

@@ -1,9 +1,16 @@
 export type Severity = "low" | "medium" | "high";
 
+export interface DiscordGuildChannel {
+  guildId: string;
+  guildName: string;
+  channelId: string;
+  channelName: string;
+}
+
 export interface RecipeParam {
   id: string;
   label: string;
-  type: "string" | "number" | "boolean" | "textarea";
+  type: "string" | "number" | "boolean" | "textarea" | "discord_guild" | "discord_channel";
   required: boolean;
   pattern?: string;
   minLength?: number;
@@ -34,6 +41,8 @@ export interface ChangeItem {
 export interface PreviewResult {
   recipeId: string;
   diff: string;
+  configBefore: string;
+  configAfter: string;
   changes: ChangeItem[];
   overwritesExisting: boolean;
   canRollback: boolean;
@@ -157,6 +166,8 @@ export interface DoctorReport {
 
 export interface AgentOverview {
   id: string;
+  name?: string;
+  emoji?: string;
   model: string | null;
   channels: string[];
   online: boolean;

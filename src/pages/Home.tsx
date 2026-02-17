@@ -131,13 +131,19 @@ export function Home() {
               <Card key={agent.id}>
                 <CardContent>
                   <div className="flex justify-between items-center">
-                    <strong>{agent.id}</strong>
+                    <strong>
+                      {agent.emoji && <span className="mr-1">{agent.emoji}</span>}
+                      {agent.name || agent.id}
+                    </strong>
                     {agent.online ? (
                       <Badge className="bg-green-100 text-green-700 border-0">online</Badge>
                     ) : (
                       <Badge className="bg-red-100 text-red-700 border-0">offline</Badge>
                     )}
                   </div>
+                  {agent.name && (
+                    <div className="text-xs text-muted-foreground mt-0.5">{agent.id}</div>
+                  )}
                   <div className="text-sm text-muted-foreground mt-1.5">
                     Model: {agent.model || "default"}
                   </div>

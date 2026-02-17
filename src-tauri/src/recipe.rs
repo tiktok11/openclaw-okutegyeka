@@ -20,9 +20,13 @@ pub struct RecipeParam {
     #[serde(rename = "type")]
     pub kind: String,
     pub required: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub pattern: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub min_length: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub max_length: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub placeholder: Option<String>,
 }
 
@@ -50,9 +54,12 @@ pub struct ChangeItem {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PreviewResult {
     pub recipe_id: String,
     pub diff: String,
+    pub config_before: String,
+    pub config_after: String,
     pub changes: Vec<ChangeItem>,
     pub overwrites_existing: bool,
     pub can_rollback: bool,
@@ -61,6 +68,7 @@ pub struct PreviewResult {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ApplyResult {
     pub ok: bool,
     pub snapshot_id: Option<String>,

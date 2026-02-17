@@ -74,7 +74,12 @@ export function History() {
           </Card>
         ))}
       </div>
-      {state.lastPreview && <DiffViewer value={state.lastPreview.diff} />}
+      {state.lastPreview && (
+        <DiffViewer
+          oldValue={state.lastPreview.configBefore}
+          newValue={state.lastPreview.configAfter}
+        />
+      )}
       <Button variant="outline" onClick={refreshHistory} className="mt-3">
         Refresh
       </Button>

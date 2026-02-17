@@ -207,6 +207,15 @@ pub struct ChannelNode {
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct DiscordGuildChannel {
+    pub guild_id: String,
+    pub guild_name: String,
+    pub channel_id: String,
+    pub channel_name: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ModelBinding {
     pub scope: String,
     pub scope_id: String,
@@ -243,6 +252,8 @@ pub struct FixResult {
 #[serde(rename_all = "camelCase")]
 pub struct AgentOverview {
     pub id: String,
+    pub name: Option<String>,
+    pub emoji: Option<String>,
     pub model: Option<String>,
     pub channels: Vec<String>,
     pub online: bool,
@@ -491,6 +502,91 @@ pub fn list_channels_minimal() -> Result<Vec<ChannelNode>, String> {
     Ok(nodes)
 }
 
+/// Read Discord guild/channels from persistent cache. Fast, no subprocess.
+#[tauri::command]
+pub fn list_discord_guild_channels() -> Result<Vec<DiscordGuildChannel>, String> {
+    let paths = resolve_paths();
+    let cache_file = paths.clawpal_dir.join("discord-guild-channels.json");
+    if cache_file.exists() {
+        let text = fs::read_to_string(&cache_file).map_err(|e| e.to_string())?;
+        let entries: Vec<DiscordGuildChannel> = serde_json::from_str(&text).unwrap_or_default();
+        return Ok(entries);
+    }
+    Ok(Vec::new())
+}
+
+/// Resolve Discord guild/channel names via openclaw CLI and persist to cache.
+#[tauri::command]
+pub async fn refresh_discord_guild_channels() -> Result<Vec<DiscordGuildChannel>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let paths = resolve_paths();
+        ensure_dirs(&paths)?;
+        let cfg = read_openclaw_config(&paths)?;
+
+        let guilds = cfg
+            .get("channels")
+            .and_then(|c| c.get("discord"))
+            .and_then(|d| d.get("guilds"))
+            .and_then(Value::as_object);
+
+        let Some(guilds) = guilds else {
+            return Ok(Vec::new());
+        };
+
+        let mut entries: Vec<DiscordGuildChannel> = Vec::new();
+        let mut channel_ids: Vec<String> = Vec::new();
+
+        for (guild_id, guild_val) in guilds {
+            let guild_name = guild_val
+                .get("slug")
+                .or_else(|| guild_val.get("name"))
+                .and_then(Value::as_str)
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| guild_id.clone());
+
+            if let Some(channels) = guild_val.get("channels").and_then(Value::as_object) {
+                for (channel_id, _channel_val) in channels {
+                    channel_ids.push(channel_id.clone());
+                    entries.push(DiscordGuildChannel {
+                        guild_id: guild_id.clone(),
+                        guild_name: guild_name.clone(),
+                        channel_id: channel_id.clone(),
+                        channel_name: channel_id.clone(),
+                    });
+                }
+            }
+        }
+
+        if !channel_ids.is_empty() {
+            let mut args = vec![
+                "channels", "resolve", "--json",
+                "--channel", "discord",
+                "--kind", "auto",
+            ];
+            let id_refs: Vec<&str> = channel_ids.iter().map(String::as_str).collect();
+            args.extend_from_slice(&id_refs);
+
+            if let Ok(output) = run_openclaw_raw(&args) {
+                if let Some(name_map) = parse_resolve_name_map(&output.stdout) {
+                    for entry in &mut entries {
+                        if let Some(name) = name_map.get(&entry.channel_id) {
+                            entry.channel_name = name.clone();
+                        }
+                    }
+                }
+            }
+        }
+
+        // Persist to cache
+        let cache_file = paths.clawpal_dir.join("discord-guild-channels.json");
+        let json = serde_json::to_string_pretty(&entries).map_err(|e| e.to_string())?;
+        write_text(&cache_file, &json)?;
+
+        Ok(entries)
+    }).await.map_err(|e| e.to_string())?
+}
+
 #[tauri::command]
 pub fn update_channel_config(
     path: String,
@@ -598,10 +694,23 @@ pub fn list_agents_overview() -> Result<Vec<AgentOverview>, String> {
     let cfg = read_openclaw_config(&paths)?;
     let mut agents = Vec::new();
 
+    let default_workspace = cfg.pointer("/agents/defaults/workspace")
+        .and_then(Value::as_str)
+        .map(|s| expand_tilde(s));
+
     if let Some(list) = cfg.pointer("/agents/list").and_then(Value::as_array) {
         let channel_nodes = collect_channel_nodes(&cfg);
         for agent in list {
             let id = agent.get("id").and_then(Value::as_str).unwrap_or("agent").to_string();
+
+            // Read name/emoji from IDENTITY.md in the agent's workspace
+            let workspace = agent.get("workspace").and_then(Value::as_str)
+                .map(|s| expand_tilde(s))
+                .or_else(|| default_workspace.clone());
+            let (name, emoji) = workspace
+                .and_then(|ws| parse_identity_md(&ws))
+                .unwrap_or((None, None));
+
             let model = agent.get("model").and_then(read_model_value)
                 .or_else(|| cfg.pointer("/agents/defaults/model").and_then(read_model_value))
                 .or_else(|| cfg.pointer("/agents/default/model").and_then(read_model_value));
@@ -611,6 +720,8 @@ pub fn list_agents_overview() -> Result<Vec<AgentOverview>, String> {
             let has_sessions = paths.base_dir.join("agents").join(&id).join("sessions").exists();
             agents.push(AgentOverview {
                 id,
+                name,
+                emoji,
                 model,
                 channels,
                 online: has_sessions,
@@ -618,6 +729,39 @@ pub fn list_agents_overview() -> Result<Vec<AgentOverview>, String> {
         }
     }
     Ok(agents)
+}
+
+fn expand_tilde(path: &str) -> String {
+    if path.starts_with("~/") {
+        if let Some(home) = std::env::var("HOME").ok() {
+            return format!("{}{}", home, &path[1..]);
+        }
+    }
+    path.to_string()
+}
+
+fn parse_identity_md(workspace: &str) -> Option<(Option<String>, Option<String>)> {
+    let identity_path = std::path::Path::new(workspace).join("IDENTITY.md");
+    let content = fs::read_to_string(&identity_path).ok()?;
+    let mut name = None;
+    let mut emoji = None;
+    for line in content.lines() {
+        let trimmed = line.trim().trim_start_matches('-').trim();
+        // Handle both "Name: X" and "**Name:** X"
+        let trimmed = trimmed.replace("**", "");
+        if let Some(val) = trimmed.strip_prefix("Name:") {
+            let val = val.trim();
+            if !val.is_empty() {
+                name = Some(val.to_string());
+            }
+        } else if let Some(val) = trimmed.strip_prefix("Emoji:") {
+            let val = val.trim();
+            if !val.is_empty() {
+                emoji = Some(val.to_string());
+            }
+        }
+    }
+    Some((name, emoji))
 }
 
 #[tauri::command]
@@ -715,9 +859,13 @@ pub fn preview_apply(
     ensure_dirs(&paths)?;
     let current = read_openclaw_config(&paths)?;
     let (candidate, changes) = build_candidate_config(&current, &recipe, &params)?;
+    let before_text = serde_json::to_string_pretty(&current).unwrap_or_else(|_| "{}".into());
+    let after_text = serde_json::to_string_pretty(&candidate).unwrap_or_else(|_| "{}".into());
     Ok(PreviewResult {
         recipe_id: recipe_id.clone(),
         diff: format_diff(&current, &candidate),
+        config_before: before_text,
+        config_after: after_text,
         changes,
         overwrites_existing: true,
         can_rollback: true,
@@ -770,6 +918,14 @@ pub fn apply_recipe(
 }
 
 #[tauri::command]
+pub async fn restart_gateway() -> Result<bool, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        run_openclaw_raw(&["gateway", "restart"])?;
+        Ok(true)
+    }).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 pub fn list_history(limit: usize, offset: usize) -> Result<HistoryPage, String> {
     let paths = resolve_paths();
     let index = list_snapshots(&paths.metadata_path)?;
@@ -805,9 +961,13 @@ pub fn preview_rollback(snapshot_id: String) -> Result<PreviewResult, String> {
     let current = read_openclaw_config(&paths)?;
     let target_text = read_snapshot(&target.config_path)?;
     let target_json: Value = json5::from_str(&target_text).unwrap_or(Value::Object(Default::default()));
+    let before_text = serde_json::to_string_pretty(&current).unwrap_or_else(|_| "{}".into());
+    let after_text = serde_json::to_string_pretty(&target_json).unwrap_or_else(|_| "{}".into());
     Ok(PreviewResult {
         recipe_id: "rollback".into(),
         diff: format_diff(&current, &target_json),
+        config_before: before_text,
+        config_after: after_text,
         changes: collect_change_paths(&current, &target_json),
         overwrites_existing: true,
         can_rollback: true,
@@ -961,6 +1121,50 @@ fn run_openclaw_raw(args: &[&str]) -> Result<OpenclawCommandOutput, String> {
 fn extract_json_from_output(raw: &str) -> Option<&str> {
     let start = raw.find('{').or_else(|| raw.find('['))?;
     Some(&raw[start..])
+}
+
+/// Extract the last JSON array from CLI output that may contain ANSI codes and plugin logs.
+/// Scans from the end to find the last `]`, then finds its matching `[`.
+fn extract_last_json_array(raw: &str) -> Option<&str> {
+    let bytes = raw.as_bytes();
+    let end = bytes.iter().rposition(|&b| b == b']')?;
+    let mut depth = 0;
+    for i in (0..=end).rev() {
+        match bytes[i] {
+            b']' => depth += 1,
+            b'[' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(&raw[i..=end]);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Parse `openclaw channels resolve --json` output into a map of id -> name.
+fn parse_resolve_name_map(stdout: &str) -> Option<HashMap<String, String>> {
+    let json_str = extract_last_json_array(stdout)?;
+    let parsed: Vec<Value> = serde_json::from_str(json_str).ok()?;
+    let mut map = HashMap::new();
+    for item in parsed {
+        let resolved = item.get("resolved").and_then(Value::as_bool).unwrap_or(false);
+        if !resolved {
+            continue;
+        }
+        if let (Some(input), Some(name)) = (
+            item.get("input").and_then(Value::as_str),
+            item.get("name").and_then(Value::as_str),
+        ) {
+            let name = name.trim().to_string();
+            if !name.is_empty() {
+                map.insert(input.to_string(), name);
+            }
+        }
+    }
+    Some(map)
 }
 
 fn extract_version_from_text(input: &str) -> Option<String> {

@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AgentOverview, ApplyResult, BackupInfo, HistoryItem, ModelCatalogProvider, ModelProfile, PreviewResult, Recipe, ResolvedApiKey, StatusLight, SystemStatus, DoctorReport, MemoryFile, SessionFile } from "./types";
+import type { AgentOverview, ApplyResult, BackupInfo, DiscordGuildChannel, HistoryItem, ModelCatalogProvider, ModelProfile, PreviewResult, Recipe, ResolvedApiKey, StatusLight, SystemStatus, DoctorReport, MemoryFile, SessionFile } from "./types";
 
 export const api = {
   getSystemStatus: (): Promise<SystemStatus> =>
@@ -72,4 +72,10 @@ export const api = {
     invoke("restore_from_backup", { backupName }),
   deleteBackup: (backupName: string): Promise<boolean> =>
     invoke("delete_backup", { backupName }),
+  listDiscordGuildChannels: (): Promise<DiscordGuildChannel[]> =>
+    invoke("list_discord_guild_channels", {}),
+  refreshDiscordGuildChannels: (): Promise<DiscordGuildChannel[]> =>
+    invoke("refresh_discord_guild_channels", {}),
+  restartGateway: (): Promise<boolean> =>
+    invoke("restart_gateway", {}),
 };
