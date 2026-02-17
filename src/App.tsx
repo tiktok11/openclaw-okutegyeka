@@ -272,15 +272,6 @@ export function App() {
         {route === "settings" && (
           <Settings key={configVersion} onDataChange={bumpConfigVersion} />
         )}
-        {route === "cook" && (
-          <Button
-            variant="ghost"
-            className="mt-3 hover:bg-accent"
-            onClick={() => setRoute("recipes")}
-          >
-            &larr; Recipes
-          </Button>
-        )}
       </main>
     </div>
 
