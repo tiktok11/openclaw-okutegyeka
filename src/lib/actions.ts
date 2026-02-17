@@ -107,13 +107,16 @@ export function resolveSteps(
     if (step.action === "config_patch") {
       resolved.params = params;
     }
-    // A step is skippable if any of its template args resolved to empty string
-    const skippable = Object.entries(step.args).some(([key, origValue]) => {
-      if (typeof origValue === "string" && origValue.includes("{{")) {
-        const rv = resolved[key];
-        return typeof rv === "string" && rv.trim() === "";
-      }
-      return false;
+    // A step is skippable if any template variable in its args references an empty param
+    const skippable = Object.values(step.args).some((origValue) => {
+      if (typeof origValue !== "string") return false;
+      const matches = origValue.match(/\{\{(\w+)\}\}/g);
+      if (!matches) return false;
+      return matches.some((m) => {
+        const paramId = m.slice(2, -2);
+        const val = params[paramId];
+        return val !== undefined && val.trim() === "";
+      });
     });
     const actionDef = getAction(step.action);
     const description = actionDef?.describe(resolved) || step.label;
