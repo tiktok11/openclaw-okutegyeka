@@ -27,7 +27,7 @@ export function Cook({
   const [resolvedStepList, setResolvedStepList] = useState<ResolvedStep[]>([]);
   const [stepStatuses, setStepStatuses] = useState<StepStatus[]>([]);
   const [stepErrors, setStepErrors] = useState<Record<number, string>>({});
-  const [hasConfigPatch, setHasConfigPatch] = useState(false);
+  const [needsRestart, setNeedsRestart] = useState(false);
 
   useEffect(() => {
     api.listRecipes(recipeSource).then((recipes) => {
@@ -51,7 +51,7 @@ export function Cook({
     // Auto-skip steps whose template args resolved to empty
     setStepStatuses(steps.map((s) => (s.skippable ? "skipped" : "pending")));
     setStepErrors({});
-    setHasConfigPatch(steps.some((s) => !s.skippable && s.action === "config_patch"));
+    setNeedsRestart(steps.some((s) => !s.skippable));
     setPhase("confirm");
   };
 
@@ -203,7 +203,7 @@ export function Cook({
               {doneCount} step{doneCount !== 1 ? "s" : ""} completed
               {skippedCount > 0 && `, ${skippedCount} skipped`}
             </p>
-            {hasConfigPatch && (
+            {needsRestart && (
               <p className="text-sm text-muted-foreground mt-1">
                 Use "Apply Changes" in the sidebar to restart the gateway and activate config changes.
               </p>
