@@ -11,9 +11,9 @@
         { "id": "agent_id", "label": "Agent ID", "type": "string", "required": true, "placeholder": "e.g. my-bot" },
         { "id": "guild_id", "label": "Guild", "type": "discord_guild", "required": true },
         { "id": "channel_id", "label": "Channel", "type": "discord_channel", "required": true },
-        { "id": "name", "label": "Display Name", "type": "string", "required": true, "placeholder": "e.g. MyBot" },
+        { "id": "name", "label": "Display Name", "type": "string", "required": false, "placeholder": "e.g. MyBot" },
         { "id": "emoji", "label": "Emoji", "type": "string", "required": false, "placeholder": "e.g. \ud83e\udd16" },
-        { "id": "persona", "label": "Persona", "type": "textarea", "required": true, "placeholder": "You are..." }
+        { "id": "persona", "label": "Persona", "type": "textarea", "required": false, "placeholder": "You are..." }
       ],
       "steps": [
         { "action": "create_agent", "label": "Create independent agent", "args": { "agentId": "{{agent_id}}", "independent": true } },

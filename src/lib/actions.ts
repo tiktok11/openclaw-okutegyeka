@@ -81,6 +81,7 @@ export interface ResolvedStep {
   label: string;
   args: Record<string, unknown>;
   description: string;
+  skippable: boolean;
 }
 
 export function resolveSteps(
@@ -92,6 +93,14 @@ export function resolveSteps(
     if (step.action === "config_patch") {
       resolved.params = params;
     }
+    // A step is skippable if any of its template args resolved to empty string
+    const skippable = Object.entries(step.args).some(([key, origValue]) => {
+      if (typeof origValue === "string" && origValue.includes("{{")) {
+        const rv = resolved[key];
+        return typeof rv === "string" && rv.trim() === "";
+      }
+      return false;
+    });
     const actionDef = getAction(step.action);
     const description = actionDef?.describe(resolved) || step.label;
     return {
@@ -100,6 +109,7 @@ export function resolveSteps(
       label: step.label,
       args: resolved,
       description: description || step.label,
+      skippable,
     };
   });
 }

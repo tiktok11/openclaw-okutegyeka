@@ -48,9 +48,10 @@ export function Cook({
   const handleNext = () => {
     const steps = resolveSteps(recipe.steps, params);
     setResolvedStepList(steps);
-    setStepStatuses(steps.map(() => "pending"));
+    // Auto-skip steps whose template args resolved to empty
+    setStepStatuses(steps.map((s) => (s.skippable ? "skipped" : "pending")));
     setStepErrors({});
-    setHasConfigPatch(steps.some((s) => s.action === "config_patch"));
+    setHasConfigPatch(steps.some((s) => !s.skippable && s.action === "config_patch"));
     setPhase("confirm");
   };
 
@@ -75,8 +76,7 @@ export function Cook({
 
   const handleExecute = () => {
     setPhase("execute");
-    const statuses: StepStatus[] = resolvedStepList.map(() => "pending");
-    setStepStatuses([...statuses]);
+    const statuses = [...stepStatuses];
     runFrom(0, statuses);
   };
 
@@ -131,7 +131,12 @@ export function Cook({
 
   return (
     <section>
-      <h2 className="text-2xl font-bold mb-4">{recipe.name}</h2>
+      <div className="flex items-center gap-2 mb-4">
+        <Button variant="ghost" size="sm" className="px-2" onClick={onDone}>
+          &larr;
+        </Button>
+        <h2 className="text-2xl font-bold">{recipe.name}</h2>
+      </div>
 
       {phase === "params" && (
         <ParamForm
@@ -149,13 +154,18 @@ export function Cook({
           <CardContent>
             <div className="space-y-3">
               {resolvedStepList.map((step, i) => (
-                <div key={i} className="flex items-start gap-3">
+                <div key={i} className={cn("flex items-start gap-3", stepStatuses[i] === "skipped" && "opacity-50")}>
                   <span className={cn("text-lg font-mono w-5 text-center", statusColor(stepStatuses[i]))}>
                     {statusIcon(stepStatuses[i])}
                   </span>
                   <div className="flex-1">
-                    <div className="text-sm font-medium">{step.label}</div>
-                    {step.description !== step.label && (
+                    <div className="text-sm font-medium">
+                      {step.label}
+                      {stepStatuses[i] === "skipped" && phase === "confirm" && (
+                        <span className="text-xs text-muted-foreground ml-2">(skipped — empty params)</span>
+                      )}
+                    </div>
+                    {step.description !== step.label && stepStatuses[i] !== "skipped" && (
                       <div className="text-xs text-muted-foreground">{step.description}</div>
                     )}
                     {stepErrors[i] && (
@@ -198,9 +208,6 @@ export function Cook({
                 Use "Apply Changes" in the sidebar to restart the gateway and activate config changes.
               </p>
             )}
-            <Button className="mt-4" onClick={onDone}>
-              Back to Recipes
-            </Button>
           </CardContent>
         </Card>
       )}
