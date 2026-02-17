@@ -56,6 +56,7 @@ export function App() {
   const [applying, setApplying] = useState(false);
   const [applyError, setApplyError] = useState("");
   const [configVersion, setConfigVersion] = useState(0);
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Establish baseline on startup
@@ -112,6 +113,11 @@ export function App() {
       .catch(() => {});
   };
 
+  const showToast = (message: string, type: "success" | "error" = "success") => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+  };
+
   const handleApplyConfirm = () => {
     setApplying(true);
     setApplyError("");
@@ -120,6 +126,7 @@ export function App() {
         setShowApplyDialog(false);
         setDirty(false);
         bumpConfigVersion();
+        showToast("Gateway restarted successfully");
       })
       .catch((e) => setApplyError(String(e)))
       .finally(() => setApplying(false));
@@ -131,8 +138,9 @@ export function App() {
         setShowDiscardDialog(false);
         setDirty(false);
         bumpConfigVersion();
+        showToast("Changes discarded");
       })
-      .catch(() => {});
+      .catch((e) => showToast(`Discard failed: ${e}`, "error"));
   };
 
   return (
@@ -331,6 +339,16 @@ export function App() {
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
+
+    {/* Toast */}
+    {toast && (
+      <div className={cn(
+        "fixed bottom-4 right-4 px-4 py-2.5 rounded-md shadow-lg text-sm font-medium z-50 animate-in fade-in slide-in-from-bottom-2",
+        toast.type === "success" ? "bg-green-600 text-white" : "bg-destructive text-destructive-foreground"
+      )}>
+        {toast.message}
+      </div>
+    )}
     </>
   );
 }
