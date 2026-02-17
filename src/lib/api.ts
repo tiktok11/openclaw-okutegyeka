@@ -12,10 +12,8 @@ export const api = {
     invoke("refresh_model_catalog", {}),
   listRecipes: (source?: string): Promise<Recipe[]> =>
     invoke("list_recipes", source ? { source } : {}),
-  previewApply: (recipeId: string, params: Record<string, string>, source?: string): Promise<PreviewResult> =>
-    invoke("preview_apply", { recipeId, params, source }),
-  applyRecipe: (recipeId: string, params: Record<string, string>, source?: string): Promise<ApplyResult> =>
-    invoke("apply_recipe", { recipeId, params, source }),
+  applyConfigPatch: (patchTemplate: string, params: Record<string, string>): Promise<ApplyResult> =>
+    invoke("apply_config_patch", { patchTemplate, params }),
   listHistory: (limit = 20, offset = 0): Promise<{ items: HistoryItem[] }> =>
     invoke("list_history", { limit, offset }),
   previewRollback: (snapshotId: string): Promise<PreviewResult> =>

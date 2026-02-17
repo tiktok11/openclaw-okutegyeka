@@ -18,6 +18,12 @@ export interface RecipeParam {
   placeholder?: string;
 }
 
+export interface RecipeStep {
+  action: string;
+  label: string;
+  args: Record<string, unknown>;
+}
+
 export interface Recipe {
   id: string;
   name: string;
@@ -26,10 +32,7 @@ export interface Recipe {
   tags: string[];
   difficulty: "easy" | "normal" | "advanced";
   params: RecipeParam[];
-  action?: string;
-  patchTemplate: string;
-  impactCategory: string;
-  impactSummary: string;
+  steps: RecipeStep[];
 }
 
 export interface ChangeItem {
