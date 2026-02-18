@@ -18,6 +18,12 @@ tauri = { version = "2.1.0", features = [] }
 thiserror = "1.0.63"
 uuid = { version = "1.11.0", features = ["v4"] }
 chrono = { version = "0.4.38", features = ["clock"] }
+russh = "0.46"
+russh-keys = "0.46"
+russh-sftp = "2.0"
+async-trait = "0.1"
+tokio = { version = "1", features = ["sync"] }
+shellexpand = "3.1"
 
 [build-dependencies]
 tauri-build = { version = "2.1.0", features = [] }
