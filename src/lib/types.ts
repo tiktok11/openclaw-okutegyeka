@@ -130,6 +130,32 @@ export interface SessionFile {
   sizeBytes: number;
 }
 
+export interface SessionAnalysis {
+  agent: string;
+  sessionId: string;
+  filePath: string;
+  sizeBytes: number;
+  messageCount: number;
+  userMessageCount: number;
+  assistantMessageCount: number;
+  lastActivity: string | null;
+  ageDays: number;
+  totalTokens: number;
+  model: string | null;
+  category: "empty" | "low_value" | "valuable";
+  kind: string;
+}
+
+export interface AgentSessionAnalysis {
+  agent: string;
+  totalFiles: number;
+  totalSizeBytes: number;
+  emptyCount: number;
+  lowValueCount: number;
+  valuableCount: number;
+  sessions: SessionAnalysis[];
+}
+
 export interface ModelProfile {
   id: string;
   name: string;

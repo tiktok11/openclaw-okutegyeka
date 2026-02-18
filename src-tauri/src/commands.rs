@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::{fs, process::Command, time::{SystemTime, UNIX_EPOCH}};
 use serde::{Deserialize, Serialize};
@@ -148,6 +149,36 @@ pub struct SessionFile {
     pub agent: String,
     pub kind: String,
     pub size_bytes: u64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionAnalysis {
+    pub agent: String,
+    pub session_id: String,
+    pub file_path: String,
+    pub size_bytes: u64,
+    pub message_count: usize,
+    pub user_message_count: usize,
+    pub assistant_message_count: usize,
+    pub last_activity: Option<String>,
+    pub age_days: f64,
+    pub total_tokens: u64,
+    pub model: Option<String>,
+    pub category: String,
+    pub kind: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentSessionAnalysis {
+    pub agent: String,
+    pub total_files: usize,
+    pub total_size_bytes: u64,
+    pub empty_count: usize,
+    pub low_value_count: usize,
+    pub valuable_count: usize,
+    pub sessions: Vec<SessionAnalysis>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -1194,6 +1225,351 @@ pub fn clear_agent_sessions(agent_id: String) -> Result<usize, String> {
     }
     let paths = resolve_paths();
     clear_agent_and_global_sessions(&paths.base_dir.join("agents"), Some(agent_id.as_str()))
+}
+
+#[tauri::command]
+pub async fn analyze_sessions() -> Result<Vec<AgentSessionAnalysis>, String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        analyze_sessions_sync()
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+fn analyze_sessions_sync() -> Result<Vec<AgentSessionAnalysis>, String> {
+    let paths = resolve_paths();
+    let agents_root = paths.base_dir.join("agents");
+    if !agents_root.exists() {
+        return Ok(Vec::new());
+    }
+
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as f64;
+
+    let mut results: Vec<AgentSessionAnalysis> = Vec::new();
+    let entries = fs::read_dir(&agents_root).map_err(|e| e.to_string())?;
+
+    for entry in entries.flatten() {
+        let entry_path = entry.path();
+        if !entry_path.is_dir() {
+            continue;
+        }
+        let agent = entry.file_name().to_string_lossy().to_string();
+
+        // Load sessions.json metadata for this agent
+        let sessions_json_path = entry_path.join("sessions").join("sessions.json");
+        let sessions_meta: HashMap<String, Value> = if sessions_json_path.exists() {
+            let text = fs::read_to_string(&sessions_json_path).unwrap_or_default();
+            serde_json::from_str(&text).unwrap_or_default()
+        } else {
+            HashMap::new()
+        };
+
+        // Build sessionId -> metadata lookup
+        let mut meta_by_id: HashMap<String, &Value> = HashMap::new();
+        for (_key, val) in &sessions_meta {
+            if let Some(sid) = val.get("sessionId").and_then(Value::as_str) {
+                meta_by_id.insert(sid.to_string(), val);
+            }
+        }
+
+        let mut agent_sessions: Vec<SessionAnalysis> = Vec::new();
+
+        for (kind_name, dir_name) in [("sessions", "sessions"), ("archive", "sessions_archive")] {
+            let dir = entry_path.join(dir_name);
+            if !dir.exists() {
+                continue;
+            }
+            let files = match fs::read_dir(&dir) {
+                Ok(f) => f,
+                Err(_) => continue,
+            };
+            for file_entry in files.flatten() {
+                let file_path = file_entry.path();
+                let fname = file_entry.file_name().to_string_lossy().to_string();
+                if !fname.ends_with(".jsonl") {
+                    continue;
+                }
+
+                let metadata = match file_entry.metadata() {
+                    Ok(m) => m,
+                    Err(_) => continue,
+                };
+                let size_bytes = metadata.len();
+
+                // Extract session ID from filename (e.g. "abc123.jsonl" or "abc123-topic-456.jsonl")
+                let session_id = fname.trim_end_matches(".jsonl").to_string();
+
+                // Parse JSONL to count messages
+                let mut message_count = 0usize;
+                let mut user_message_count = 0usize;
+                let mut assistant_message_count = 0usize;
+                let mut last_activity: Option<String> = None;
+
+                if let Ok(file) = fs::File::open(&file_path) {
+                    let reader = BufReader::new(file);
+                    for line in reader.lines() {
+                        let line = match line {
+                            Ok(l) => l,
+                            Err(_) => continue,
+                        };
+                        if line.trim().is_empty() {
+                            continue;
+                        }
+                        let obj: Value = match serde_json::from_str(&line) {
+                            Ok(v) => v,
+                            Err(_) => continue,
+                        };
+                        if obj.get("type").and_then(Value::as_str) == Some("message") {
+                            message_count += 1;
+                            if let Some(ts) = obj.get("timestamp").and_then(Value::as_str) {
+                                last_activity = Some(ts.to_string());
+                            }
+                            let role = obj.pointer("/message/role").and_then(Value::as_str);
+                            match role {
+                                Some("user") => user_message_count += 1,
+                                Some("assistant") => assistant_message_count += 1,
+                                _ => {}
+                            }
+                        }
+                    }
+                }
+
+                // Look up metadata from sessions.json
+                // For topic files like "abc-topic-123", try the base session ID "abc"
+                let base_id = if session_id.contains("-topic-") {
+                    session_id.split("-topic-").next().unwrap_or(&session_id)
+                } else {
+                    &session_id
+                };
+                let meta = meta_by_id.get(base_id);
+
+                let total_tokens = meta
+                    .and_then(|m| m.get("totalTokens"))
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0);
+                let model = meta
+                    .and_then(|m| m.get("model"))
+                    .and_then(Value::as_str)
+                    .map(|s| s.to_string());
+                let updated_at = meta
+                    .and_then(|m| m.get("updatedAt"))
+                    .and_then(Value::as_f64)
+                    .unwrap_or(0.0);
+
+                let age_days = if updated_at > 0.0 {
+                    (now - updated_at) / (1000.0 * 60.0 * 60.0 * 24.0)
+                } else {
+                    // Fall back to file modification time
+                    metadata.modified().ok()
+                        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+                        .map(|d| (now - d.as_millis() as f64) / (1000.0 * 60.0 * 60.0 * 24.0))
+                        .unwrap_or(0.0)
+                };
+
+                // Classify
+                let category = if size_bytes < 500 || message_count == 0 {
+                    "empty"
+                } else if user_message_count <= 1 && age_days > 7.0 {
+                    "low_value"
+                } else {
+                    "valuable"
+                };
+
+                agent_sessions.push(SessionAnalysis {
+                    agent: agent.clone(),
+                    session_id,
+                    file_path: file_path.to_string_lossy().to_string(),
+                    size_bytes,
+                    message_count,
+                    user_message_count,
+                    assistant_message_count,
+                    last_activity,
+                    age_days,
+                    total_tokens,
+                    model,
+                    category: category.to_string(),
+                    kind: kind_name.to_string(),
+                });
+            }
+        }
+
+        // Sort: empty first, then low_value, then valuable; within each by age descending
+        agent_sessions.sort_by(|a, b| {
+            let cat_order = |c: &str| match c {
+                "empty" => 0,
+                "low_value" => 1,
+                _ => 2,
+            };
+            cat_order(&a.category).cmp(&cat_order(&b.category))
+                .then(b.age_days.partial_cmp(&a.age_days).unwrap_or(std::cmp::Ordering::Equal))
+        });
+
+        let total_files = agent_sessions.len();
+        let total_size_bytes = agent_sessions.iter().map(|s| s.size_bytes).sum();
+        let empty_count = agent_sessions.iter().filter(|s| s.category == "empty").count();
+        let low_value_count = agent_sessions.iter().filter(|s| s.category == "low_value").count();
+        let valuable_count = agent_sessions.iter().filter(|s| s.category == "valuable").count();
+
+        if total_files > 0 {
+            results.push(AgentSessionAnalysis {
+                agent,
+                total_files,
+                total_size_bytes,
+                empty_count,
+                low_value_count,
+                valuable_count,
+                sessions: agent_sessions,
+            });
+        }
+    }
+
+    results.sort_by(|a, b| b.total_size_bytes.cmp(&a.total_size_bytes));
+    Ok(results)
+}
+
+#[tauri::command]
+pub async fn delete_sessions_by_ids(agent_id: String, session_ids: Vec<String>) -> Result<usize, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        delete_sessions_by_ids_sync(&agent_id, &session_ids)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+fn delete_sessions_by_ids_sync(agent_id: &str, session_ids: &[String]) -> Result<usize, String> {
+    if agent_id.trim().is_empty() {
+        return Err("agent id is required".into());
+    }
+    if agent_id.contains("..") || agent_id.contains('/') || agent_id.contains('\\') {
+        return Err("invalid agent id".into());
+    }
+    let paths = resolve_paths();
+    let agent_dir = paths.base_dir.join("agents").join(agent_id);
+
+    let mut deleted = 0usize;
+
+    // Search in both sessions and sessions_archive
+    let dirs = ["sessions", "sessions_archive"];
+
+    for sid in session_ids {
+        if sid.contains("..") || sid.contains('/') || sid.contains('\\') {
+            continue;
+        }
+        for dir_name in &dirs {
+            let dir = agent_dir.join(dir_name);
+            if !dir.exists() {
+                continue;
+            }
+            let jsonl_path = dir.join(format!("{}.jsonl", sid));
+            if jsonl_path.exists() {
+                if fs::remove_file(&jsonl_path).is_ok() {
+                    deleted += 1;
+                }
+            }
+            // Also clean up related files (topic files, .lock, .deleted.*)
+            if let Ok(entries) = fs::read_dir(&dir) {
+                for entry in entries.flatten() {
+                    let fname = entry.file_name().to_string_lossy().to_string();
+                    if fname.starts_with(sid.as_str()) && fname != format!("{}.jsonl", sid) {
+                        let _ = fs::remove_file(entry.path());
+                    }
+                }
+            }
+        }
+    }
+
+    // Remove entries from sessions.json (in sessions dir)
+    let sessions_json_path = agent_dir.join("sessions").join("sessions.json");
+    if sessions_json_path.exists() {
+        if let Ok(text) = fs::read_to_string(&sessions_json_path) {
+            if let Ok(mut data) = serde_json::from_str::<serde_json::Map<String, Value>>(&text) {
+                let id_set: HashSet<&str> = session_ids.iter().map(String::as_str).collect();
+                data.retain(|_key, val| {
+                    let sid = val.get("sessionId").and_then(Value::as_str).unwrap_or("");
+                    !id_set.contains(sid)
+                });
+                let _ = fs::write(&sessions_json_path, serde_json::to_string(&data).unwrap_or_default());
+            }
+        }
+    }
+
+    Ok(deleted)
+}
+
+#[tauri::command]
+pub async fn preview_session(agent_id: String, session_id: String) -> Result<Vec<Value>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        preview_session_sync(&agent_id, &session_id)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+fn preview_session_sync(agent_id: &str, session_id: &str) -> Result<Vec<Value>, String> {
+    if agent_id.contains("..") || agent_id.contains('/') || agent_id.contains('\\') {
+        return Err("invalid agent id".into());
+    }
+    if session_id.contains("..") || session_id.contains('/') || session_id.contains('\\') {
+        return Err("invalid session id".into());
+    }
+    let paths = resolve_paths();
+    let agent_dir = paths.base_dir.join("agents").join(agent_id);
+    let jsonl_name = format!("{}.jsonl", session_id);
+
+    // Search in both sessions and sessions_archive
+    let file_path = ["sessions", "sessions_archive"]
+        .iter()
+        .map(|dir| agent_dir.join(dir).join(&jsonl_name))
+        .find(|p| p.exists());
+
+    let file_path = match file_path {
+        Some(p) => p,
+        None => return Ok(Vec::new()),
+    };
+
+    let file = fs::File::open(&file_path).map_err(|e| e.to_string())?;
+    let reader = BufReader::new(file);
+    let mut messages: Vec<Value> = Vec::new();
+
+    for line in reader.lines() {
+        let line = match line {
+            Ok(l) => l,
+            Err(_) => continue,
+        };
+        if line.trim().is_empty() {
+            continue;
+        }
+        let obj: Value = match serde_json::from_str(&line) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        if obj.get("type").and_then(Value::as_str) == Some("message") {
+            let role = obj.pointer("/message/role").and_then(Value::as_str).unwrap_or("unknown");
+            let content = obj.pointer("/message/content")
+                .map(|c| {
+                    if let Some(arr) = c.as_array() {
+                        arr.iter()
+                            .filter_map(|item| item.get("text").and_then(Value::as_str))
+                            .collect::<Vec<_>>()
+                            .join("\n")
+                    } else if let Some(s) = c.as_str() {
+                        s.to_string()
+                    } else {
+                        String::new()
+                    }
+                })
+                .unwrap_or_default();
+            messages.push(serde_json::json!({
+                "role": role,
+                "content": content,
+            }));
+        }
+    }
+
+    Ok(messages)
 }
 
 #[tauri::command]

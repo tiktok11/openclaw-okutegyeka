@@ -4,6 +4,7 @@ import { Recipes } from "./pages/Recipes";
 import { Cook } from "./pages/Cook";
 import { History } from "./pages/History";
 import { Settings } from "./pages/Settings";
+import { Doctor } from "./pages/Doctor";
 import { Channels } from "./pages/Channels";
 import { Chat } from "./components/Chat";
 import { DiffViewer } from "./components/DiffViewer";
@@ -30,7 +31,7 @@ import {
 import { cn } from "@/lib/utils";
 import type { DiscordGuildChannel } from "./lib/types";
 
-type Route = "home" | "recipes" | "cook" | "history" | "channels" | "settings";
+type Route = "home" | "recipes" | "cook" | "history" | "channels" | "doctor" | "settings";
 
 interface ToastItem {
   id: number;
@@ -188,6 +189,16 @@ export function App() {
           >
             History
           </Button>
+          <Button
+            variant="ghost"
+            className={cn(
+              "justify-start hover:bg-accent",
+              (route === "doctor") && "bg-accent text-accent-foreground border-l-[3px] border-primary"
+            )}
+            onClick={() => setRoute("doctor")}
+          >
+            Doctor
+          </Button>
           <Separator className="my-2" />
           <Button
             variant="ghost"
@@ -275,6 +286,7 @@ export function App() {
           />
         )}
         {route === "history" && <History key={configVersion} />}
+        {route === "doctor" && <Doctor />}
         {route === "settings" && (
           <Settings key={configVersion} onDataChange={bumpConfigVersion} />
         )}

@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AgentOverview, ApplyResult, BackupInfo, ChannelNode, ConfigDirtyState, DiscordGuildChannel, HistoryItem, ModelCatalogProvider, ModelProfile, PreviewResult, ProviderAuthSuggestion, Recipe, ResolvedApiKey, StatusLight, SystemStatus, DoctorReport, MemoryFile, SessionFile } from "./types";
+import type { AgentOverview, AgentSessionAnalysis, ApplyResult, BackupInfo, ChannelNode, ConfigDirtyState, DiscordGuildChannel, HistoryItem, ModelCatalogProvider, ModelProfile, PreviewResult, ProviderAuthSuggestion, Recipe, ResolvedApiKey, StatusLight, SystemStatus, DoctorReport, MemoryFile, SessionFile } from "./types";
 
 export const api = {
   getSystemStatus: (): Promise<SystemStatus> =>
@@ -58,6 +58,12 @@ export const api = {
     invoke("clear_all_sessions", {}),
   clearAgentSessions: (agentId: string): Promise<number> =>
     invoke("clear_agent_sessions", { agentId }),
+  analyzeSessions: (): Promise<AgentSessionAnalysis[]> =>
+    invoke("analyze_sessions", {}),
+  deleteSessionsByIds: (agentId: string, sessionIds: string[]): Promise<number> =>
+    invoke("delete_sessions_by_ids", { agentId, sessionIds }),
+  previewSession: (agentId: string, sessionId: string): Promise<{ role: string; content: string }[]> =>
+    invoke("preview_session", { agentId, sessionId }),
   runDoctor: (): Promise<DoctorReport> =>
     invoke("run_doctor_command", {}),
   fixIssues: (ids: string[]): Promise<{ ok: boolean; applied: string[]; remainingIssues: string[] }> =>
