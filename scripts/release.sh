@@ -19,12 +19,21 @@ run_or_print() {
   fi
 }
 
-say "ClawPal MVP release assistant"
+VERSION=$(node -p "require('./package.json').version")
+
+say "ClawPal v${VERSION} release assistant"
+say "======================================"
+
 run_or_print "npm run typecheck"
 run_or_print "npm run build"
 run_or_print "cd src-tauri && cargo fmt --all --check"
-run_or_print "cd src-tauri && cargo check"
-run_or_print "cd src-tauri && cargo check --target-dir target/check"
-run_or_print "cd src-tauri && cargo check"
 run_or_print "cd src-tauri && cargo tauri build"
-say "Done."
+
+say ""
+say "Local build complete!"
+say ""
+say "To publish via GitHub Actions (builds macOS + Windows + Linux):"
+say "  git tag v${VERSION}"
+say "  git push origin v${VERSION}"
+say ""
+say "This will trigger .github/workflows/release.yml and create a draft release."
