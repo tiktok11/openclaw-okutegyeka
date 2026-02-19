@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useInstance } from "@/lib/instance-context";
 import { api } from "../lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,16 +32,13 @@ export function CreateAgentDialog({
   onOpenChange,
   modelProfiles,
   onCreated,
-  instanceId,
-  isRemote,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   modelProfiles: ModelProfile[];
   onCreated: (result: CreateAgentResult) => void;
-  instanceId?: string;
-  isRemote?: boolean;
 }) {
+  const { instanceId, isRemote } = useInstance();
   const [agentId, setAgentId] = useState("");
   const [model, setModel] = useState("");
   const [independent, setIndependent] = useState(false);

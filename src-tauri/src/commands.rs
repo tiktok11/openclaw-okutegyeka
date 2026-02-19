@@ -1175,9 +1175,7 @@ fn expand_tilde(path: &str) -> String {
     path.to_string()
 }
 
-fn parse_identity_md(workspace: &str) -> Option<(Option<String>, Option<String>)> {
-    let identity_path = std::path::Path::new(workspace).join("IDENTITY.md");
-    let content = fs::read_to_string(&identity_path).ok()?;
+fn parse_identity_content(content: &str) -> (Option<String>, Option<String>) {
     let mut name = None;
     let mut emoji = None;
     for line in content.lines() {
@@ -1196,7 +1194,13 @@ fn parse_identity_md(workspace: &str) -> Option<(Option<String>, Option<String>)
             }
         }
     }
-    Some((name, emoji))
+    (name, emoji)
+}
+
+fn parse_identity_md(workspace: &str) -> Option<(Option<String>, Option<String>)> {
+    let identity_path = std::path::Path::new(workspace).join("IDENTITY.md");
+    let content = fs::read_to_string(&identity_path).ok()?;
+    Some(parse_identity_content(&content))
 }
 
 #[tauri::command]
@@ -4153,9 +4157,8 @@ pub async fn sftp_remove_file(pool: State<'_, SshConnectionPool>, host_id: Strin
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
-pub async fn remote_read_raw_config(pool: State<'_, SshConnectionPool>, host_id: String) -> Result<Value, String> {
-    let raw = pool.sftp_read(&host_id, "~/.openclaw/openclaw.json").await?;
-    serde_json::from_str(&raw).map_err(|e| format!("Failed to parse remote config: {e}"))
+pub async fn remote_read_raw_config(pool: State<'_, SshConnectionPool>, host_id: String) -> Result<String, String> {
+    pool.sftp_read(&host_id, "~/.openclaw/openclaw.json").await
 }
 
 #[tauri::command]
@@ -4243,7 +4246,7 @@ pub async fn remote_check_openclaw_update(
 }
 
 #[tauri::command]
-pub async fn remote_list_agents_overview(pool: State<'_, SshConnectionPool>, host_id: String) -> Result<Vec<Value>, String> {
+pub async fn remote_list_agents_overview(pool: State<'_, SshConnectionPool>, host_id: String) -> Result<Vec<AgentOverview>, String> {
     let raw = pool.sftp_read(&host_id, "~/.openclaw/openclaw.json").await?;
     let cfg: Value = serde_json::from_str(&raw).map_err(|e| format!("Failed to parse remote config: {e}"))?;
 
@@ -4253,23 +4256,51 @@ pub async fn remote_list_agents_overview(pool: State<'_, SshConnectionPool>, hos
         .unwrap_or(false);
 
     let mut agents = Vec::new();
+    let mut seen_ids = std::collections::HashSet::new();
     let default_model = cfg.pointer("/agents/defaults/model")
         .and_then(read_model_value)
         .or_else(|| cfg.pointer("/agents/default/model").and_then(read_model_value));
+    let default_workspace = cfg.pointer("/agents/defaults/workspace")
+        .and_then(Value::as_str)
+        .map(|s| s.to_string());
+    let channel_nodes = collect_channel_nodes(&cfg);
 
     if let Some(list) = cfg.pointer("/agents/list").and_then(Value::as_array) {
         for agent in list {
             let id = agent.get("id").and_then(Value::as_str).unwrap_or("agent").to_string();
-            let model = agent.get("model").and_then(read_model_value).or_else(|| default_model.clone());
-            agents.push(serde_json::json!({
-                "id": id,
-                "name": null,
-                "emoji": null,
-                "model": model,
-                "channels": [],
-                "online": gateway_running,
-                "workspace": null,
-            }));
+            if !seen_ids.insert(id.clone()) {
+                continue;
+            }
+
+            let workspace = agent.get("workspace").and_then(Value::as_str)
+                .map(|s| s.to_string())
+                .or_else(|| default_workspace.clone());
+
+            // Read IDENTITY.md from remote workspace via SFTP
+            let (name, emoji) = if let Some(ref ws) = workspace {
+                let identity_path = format!("{}/IDENTITY.md", ws.trim_end_matches('/'));
+                match pool.sftp_read(&host_id, &identity_path).await {
+                    Ok(content) => parse_identity_content(&content),
+                    Err(_) => (None, None),
+                }
+            } else {
+                (None, None)
+            };
+
+            let model = agent.get("model").and_then(read_model_value)
+                .or_else(|| default_model.clone());
+            let channels: Vec<String> = channel_nodes.iter()
+                .map(|ch| ch.path.clone())
+                .collect();
+            agents.push(AgentOverview {
+                id,
+                name,
+                emoji,
+                model,
+                channels,
+                online: gateway_running,
+                workspace,
+            });
         }
     }
     Ok(agents)
@@ -4286,30 +4317,11 @@ pub async fn remote_list_channels_minimal(pool: State<'_, SshConnectionPool>, ho
 pub async fn remote_list_bindings(pool: State<'_, SshConnectionPool>, host_id: String) -> Result<Vec<Value>, String> {
     let raw = pool.sftp_read(&host_id, "~/.openclaw/openclaw.json").await?;
     let cfg: Value = serde_json::from_str(&raw).map_err(|e| format!("Failed to parse remote config: {e}"))?;
-
-    let mut bindings = Vec::new();
-    if let Some(list) = cfg.pointer("/agents/list").and_then(Value::as_array) {
-        for agent in list {
-            let agent_id = agent.get("id").and_then(Value::as_str).unwrap_or("").to_string();
-            if let Some(channels_arr) = agent.get("channels").and_then(Value::as_array) {
-                for ch in channels_arr {
-                    if let Some(ch_obj) = ch.as_object() {
-                        let channel = ch_obj.get("channel").and_then(Value::as_str).unwrap_or("").to_string();
-                        let peer = ch_obj.get("peer");
-                        let peer_id = peer.and_then(|p| p.get("id")).and_then(Value::as_str).unwrap_or("").to_string();
-                        let peer_kind = peer.and_then(|p| p.get("kind")).and_then(Value::as_str).unwrap_or("").to_string();
-                        bindings.push(serde_json::json!({
-                            "agentId": agent_id,
-                            "match": {
-                                "channel": channel,
-                                "peer": { "id": peer_id, "kind": peer_kind }
-                            }
-                        }));
-                    }
-                }
-            }
-        }
-    }
+    let bindings = cfg
+        .get("bindings")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
     Ok(bindings)
 }
 
@@ -4683,18 +4695,22 @@ pub async fn remote_list_history(
         // Parse filename: {timestamp}-{source}.json
         let stem = entry.name.trim_end_matches(".json");
         let (ts_str, source) = stem.split_once('-').unwrap_or((stem, "unknown"));
-        let created_at = ts_str.parse::<u64>().unwrap_or(0);
+        let created_at = ts_str.parse::<i64>().unwrap_or(0);
+        // Convert Unix timestamp to ISO 8601 format for frontend compatibility
+        let created_at_iso = chrono::DateTime::from_timestamp(created_at, 0)
+            .map(|dt| dt.format("%Y-%m-%dT%H:%M:%SZ").to_string())
+            .unwrap_or_else(|| created_at.to_string());
         items.push(serde_json::json!({
             "id": entry.name,
-            "createdAt": created_at.to_string(),
+            "createdAt": created_at_iso,
             "source": source,
-            "canRollback": true,
+            "canRollback": false,
         }));
     }
     // Sort newest first
     items.sort_by(|a, b| {
-        let ta = a["createdAt"].as_str().unwrap_or("0");
-        let tb = b["createdAt"].as_str().unwrap_or("0");
+        let ta = a["createdAt"].as_str().unwrap_or("");
+        let tb = b["createdAt"].as_str().unwrap_or("");
         tb.cmp(ta)
     });
     Ok(serde_json::json!({ "items": items }))

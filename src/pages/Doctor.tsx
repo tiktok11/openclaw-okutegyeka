@@ -2,7 +2,8 @@ import { useEffect, useMemo, useReducer, useState } from "react";
 import { api } from "@/lib/api";
 import { useInstance } from "@/lib/instance-context";
 import { initialState, reducer } from "@/lib/state";
-import type { AgentSessionAnalysis, BackupInfo, MemoryFile, SessionFile } from "@/lib/types";
+import { formatBytes } from "@/lib/utils";
+import type { AgentSessionAnalysis, BackupInfo, SessionFile } from "@/lib/types";
 import {
   Card,
   CardHeader,
@@ -30,23 +31,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
-function formatBytes(bytes: number) {
-  if (bytes <= 0) return "0 B";
-  const units = ["B", "KB", "MB", "GB"];
-  let index = 0;
-  let value = bytes;
-  while (value >= 1024 && index < units.length - 1) {
-    value /= 1024;
-    index += 1;
-  }
-  return `${value.toFixed(1)} ${units[index]}`;
-}
-
 export function Doctor() {
   const { instanceId, isRemote, isConnected } = useInstance();
   const [state, dispatch] = useReducer(reducer, initialState);
   const [rawOutput, setRawOutput] = useState<string | null>(null);
-  const [memoryFiles, setMemoryFiles] = useState<MemoryFile[]>([]);
   const [sessionFiles, setSessionFiles] = useState<SessionFile[]>([]);
   const [backups, setBackups] = useState<BackupInfo[]>([]);
   const [dataMessage, setDataMessage] = useState("");
@@ -84,17 +72,14 @@ export function Doctor() {
     }));
   }, [sessionFiles]);
 
-  const totalMemoryBytes = useMemo(
-    () => memoryFiles.reduce((sum, f) => sum + f.sizeBytes, 0),
-    [memoryFiles],
-  );
   const totalSessionBytes = useMemo(
     () => sessionFiles.reduce((sum, f) => sum + f.sizeBytes, 0),
     [sessionFiles],
   );
 
   function runDoctorCmd(): Promise<import("@/lib/types").DoctorReport> {
-    if (isRemote && isConnected) {
+    if (isRemote) {
+      if (!isConnected) return Promise.reject("Not connected");
       return api.remoteRunDoctor(instanceId).then((report) => {
         // Remote doctor may return a rawOutput field instead of structured issues
         const raw = (report as unknown as Record<string, unknown>).rawOutput;
@@ -117,9 +102,6 @@ export function Doctor() {
         .then(setSessionFiles)
         .catch(() => setDataMessage("Failed to load remote session files"));
     } else {
-      api.listMemoryFiles()
-        .then(setMemoryFiles)
-        .catch(() => setDataMessage("Failed to load memory files"));
       api.listSessionFiles()
         .then(setSessionFiles)
         .catch(() => setDataMessage("Failed to load session files"));
@@ -156,11 +138,13 @@ export function Doctor() {
         );
     }
     refreshData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [instanceId, isRemote, isConnected]);
 
   useEffect(() => {
+    if (isRemote) { setBackups([]); return; }
     api.listBackups().then(setBackups).catch((e) => console.error("Failed to load backups:", e));
-  }, []);
+  }, [instanceId, isRemote]);
 
   return (
     <section>

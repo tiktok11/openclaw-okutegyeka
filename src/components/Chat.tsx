@@ -21,14 +21,14 @@ interface Message {
 const AGENT_ID = "main";
 const SESSION_KEY_PREFIX = "clawpal_chat_session_";
 
-function loadSessionId(agent: string): string | undefined {
-  return localStorage.getItem(SESSION_KEY_PREFIX + agent) || undefined;
+function loadSessionId(instanceId: string, agent: string): string | undefined {
+  return localStorage.getItem(SESSION_KEY_PREFIX + instanceId + "_" + agent) || undefined;
 }
-function saveSessionId(agent: string, sid: string) {
-  localStorage.setItem(SESSION_KEY_PREFIX + agent, sid);
+function saveSessionId(instanceId: string, agent: string, sid: string) {
+  localStorage.setItem(SESSION_KEY_PREFIX + instanceId + "_" + agent, sid);
 }
-function clearSessionId(agent: string) {
-  localStorage.removeItem(SESSION_KEY_PREFIX + agent);
+function clearSessionId(instanceId: string, agent: string) {
+  localStorage.removeItem(SESSION_KEY_PREFIX + instanceId + "_" + agent);
 }
 
 const CLAWPAL_CONTEXT = `[ClawPal Context] You are responding inside ClawPal, a desktop GUI for OpenClaw configuration.
@@ -46,8 +46,14 @@ export function Chat() {
   const [loading, setLoading] = useState(false);
   const [agents, setAgents] = useState<string[]>([]);
   const [agentId, setAgentId] = useState(AGENT_ID);
-  const [sessionId, setSessionId] = useState<string | undefined>(() => loadSessionId(AGENT_ID));
+  const [sessionId, setSessionId] = useState<string | undefined>(undefined);
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setMessages([]);
+    setAgentId(AGENT_ID);
+    setSessionId(loadSessionId(instanceId, AGENT_ID));
+  }, [instanceId]);
 
   useEffect(() => {
     if (isRemote) {
@@ -66,6 +72,7 @@ export function Chat() {
 
   const send = useCallback(async () => {
     if (!input.trim() || loading) return;
+    if (isRemote && !isConnected) return;
 
     const userMsg: Message = { role: "user", content: input.trim() };
     setMessages((prev) => [...prev, userMsg]);
@@ -84,7 +91,7 @@ export function Chat() {
       if (agentMeta?.sessionId) {
         const sid = agentMeta.sessionId as string;
         setSessionId(sid);
-        saveSessionId(agentId, sid);
+        saveSessionId(instanceId, agentId, sid);
       }
       // Extract reply text
       const payloads = result.payloads as Array<{ text?: string }> | undefined;
@@ -95,12 +102,12 @@ export function Chat() {
     } finally {
       setLoading(false);
     }
-  }, [input, loading, agentId, sessionId, isRemote, instanceId]);
+  }, [input, loading, agentId, sessionId, isRemote, isConnected, instanceId]);
 
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center gap-2 mb-2">
-        <Select value={agentId} onValueChange={(a) => { setAgentId(a); setSessionId(loadSessionId(a)); setMessages([]); }}>
+        <Select value={agentId} onValueChange={(a) => { setAgentId(a); setSessionId(loadSessionId(instanceId, a)); setMessages([]); }}>
           <SelectTrigger size="sm" className="w-auto text-xs">
             <SelectValue />
           </SelectTrigger>
@@ -114,7 +121,7 @@ export function Chat() {
           variant="ghost"
           size="sm"
           className="text-xs opacity-70"
-          onClick={() => { clearSessionId(agentId); setSessionId(undefined); setMessages([]); }}
+          onClick={() => { clearSessionId(instanceId, agentId); setSessionId(undefined); setMessages([]); }}
         >
           New
         </Button>

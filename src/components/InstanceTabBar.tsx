@@ -35,6 +35,7 @@ const emptyHost: Omit<SshHost, "id"> = {
   username: "",
   authMethod: "ssh_config",
   keyPath: undefined,
+  password: undefined,
 };
 
 export function InstanceTabBar({
@@ -64,6 +65,7 @@ export function InstanceTabBar({
       username: host.username,
       authMethod: host.authMethod,
       keyPath: host.keyPath,
+      password: host.password,
     });
     setDialogOpen(true);
   };
@@ -221,7 +223,8 @@ export function InstanceTabBar({
                   setForm((f) => ({
                     ...f,
                     authMethod: val as SshHost["authMethod"],
-                    keyPath: val === "ssh_config" ? undefined : (val !== f.authMethod ? "" : f.keyPath),
+                    keyPath: val === "key" ? (f.authMethod === "key" ? f.keyPath : "") : undefined,
+                    password: val === "password" ? (f.authMethod === "password" ? f.password : "") : undefined,
                   }))
                 }
               >
@@ -252,9 +255,12 @@ export function InstanceTabBar({
                 <Input
                   id="ssh-password"
                   type="password"
-                  value={form.keyPath || ""}
-                  onChange={(e) => setForm((f) => ({ ...f, keyPath: e.target.value }))}
+                  value={form.password || ""}
+                  onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
                 />
+                <p className="text-xs text-yellow-600 dark:text-yellow-400">
+                  Password is stored in plaintext. Prefer SSH key or SSH config for better security.
+                </p>
               </div>
             )}
           </div>

@@ -230,6 +230,20 @@ export interface StatusLight {
   globalDefaultModel?: string;
 }
 
+export interface RemoteSystemStatus {
+  healthy: boolean;
+  openclawVersion: string;
+  activeAgents: number;
+  globalDefaultModel?: string;
+  configPath: string;
+  openclawDir: string;
+}
+
+export interface Binding {
+  agentId: string;
+  match: { channel: string; peer?: { id: string; kind: string } };
+}
+
 export interface ConfigDirtyState {
   dirty: boolean;
   baseline: string;
@@ -251,6 +265,7 @@ export interface SshHost {
   username: string;
   authMethod: "key" | "ssh_config" | "password";
   keyPath?: string;
+  password?: string;
 }
 
 export interface SshExecResult {

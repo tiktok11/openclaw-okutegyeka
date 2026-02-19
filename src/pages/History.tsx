@@ -21,10 +21,13 @@ export function History() {
   const [message, setMessage] = useState("");
 
   const refreshHistory = () => {
-    const promise = isRemote && isConnected
-      ? api.remoteListHistory(instanceId)
-      : api.listHistory(50, 0);
-    return promise
+    if (isRemote) {
+      if (!isConnected) return;
+      return api.remoteListHistory(instanceId)
+        .then((resp) => setHistory(resp.items))
+        .catch(() => setMessage("Failed to load history"));
+    }
+    return api.listHistory(50, 0)
       .then((resp) => setHistory(resp.items))
       .catch(() => setMessage("Failed to load history"));
   };

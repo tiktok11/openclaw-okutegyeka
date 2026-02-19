@@ -24,6 +24,7 @@ pub struct SshHostConfig {
     /// "key" | "ssh_config" | "password"
     pub auth_method: String,
     pub key_path: Option<String>,
+    pub password: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -175,8 +176,9 @@ impl SshConnectionPool {
                 }
             }
             "password" => {
-                // Password auth — password stored in key_path field for now
-                let password = config.key_path.as_deref().unwrap_or("");
+                let password = config.password.as_deref()
+                    .or(config.key_path.as_deref()) // backwards compat
+                    .unwrap_or("");
                 session
                     .authenticate_password(&username, password)
                     .await

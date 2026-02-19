@@ -116,7 +116,7 @@ export function App() {
   useEffect(() => {
     setDirty(false); // Reset dirty on instance change
     checkDirty();
-    pollRef.current = setInterval(checkDirty, 2000);
+    pollRef.current = setInterval(checkDirty, isRemote ? 5000 : 2000);
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };
@@ -124,6 +124,7 @@ export function App() {
 
   // Load Discord data + extract profiles on startup or instance change
   useEffect(() => {
+    setDiscordGuildChannels([]);
     if (activeInstance === "local") {
       if (!localStorage.getItem("clawpal_profiles_extracted")) {
         api.extractModelProfilesFromConfig()
@@ -131,16 +132,17 @@ export function App() {
           .catch((e) => console.error("Failed to extract model profiles:", e));
       }
       api.listDiscordGuildChannels().then(setDiscordGuildChannels).catch((e) => console.error("Failed to load Discord channels:", e));
-    } else if (connectionStatus[activeInstance] === "connected") {
+    } else if (isConnected) {
       api.remoteListDiscordGuildChannels(activeInstance).then(setDiscordGuildChannels).catch((e) => console.error("Failed to load remote Discord channels:", e));
     }
-  }, [activeInstance, connectionStatus]);
+  }, [activeInstance, isConnected]);
 
   const bumpConfigVersion = useCallback(() => {
     setConfigVersion((v) => v + 1);
   }, []);
 
   const handleApplyClick = () => {
+    if (isRemote && !isConnected) return;
     // Load diff data for the dialog
     const checkPromise = isRemote
       ? api.remoteCheckConfigDirty(activeInstance)
@@ -354,7 +356,6 @@ export function App() {
           <Settings key={`${activeInstance}-${configVersion}`} onDataChange={bumpConfigVersion} />
         )}
       </main>
-      </InstanceContext.Provider>
 
       {/* Chat Panel -- inline, pushes main content */}
       {chatOpen && (
@@ -375,6 +376,7 @@ export function App() {
           </div>
         </aside>
       )}
+      </InstanceContext.Provider>
       </div>
     </div>
 

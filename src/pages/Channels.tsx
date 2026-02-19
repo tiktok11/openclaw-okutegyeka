@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { AgentOverview, ChannelNode, DiscordGuildChannel, ModelProfile } from "../lib/types";
+import type { AgentOverview, Binding, ChannelNode, DiscordGuildChannel, ModelProfile } from "../lib/types";
 import { api } from "../lib/api";
 import { useInstance } from "@/lib/instance-context";
 import { Card, CardContent } from "@/components/ui/card";
@@ -16,11 +16,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { CreateAgentDialog, type CreateAgentResult } from "@/components/CreateAgentDialog";
-
-interface Binding {
-  agentId: string;
-  match: { channel: string; peer?: { id: string; kind: string } };
-}
 
 interface AgentGroup {
   identity: string;
@@ -91,9 +86,9 @@ export function Channels({
   const refreshBindings = useCallback(() => {
     if (isRemote) {
       if (!isConnected) return;
-      api.remoteListBindings(instanceId).then((b) => setBindings(b as unknown as Binding[])).catch((e) => console.error("Failed to load remote bindings:", e));
+      api.remoteListBindings(instanceId).then((b) => setBindings(b)).catch((e) => console.error("Failed to load remote bindings:", e));
     } else {
-      api.listBindings().then((b) => setBindings(b as unknown as Binding[])).catch((e) => console.error("Failed to load bindings:", e));
+      api.listBindings().then((b) => setBindings(b)).catch((e) => console.error("Failed to load bindings:", e));
     }
   }, [isRemote, isConnected, instanceId]);
 
@@ -120,12 +115,15 @@ export function Channels({
     refreshBindings();
     if (!isRemote) {
       api.listModelProfiles().then((p) => setModelProfiles(p.filter((m) => m.enabled))).catch((e) => console.error("Failed to load model profiles:", e));
+    } else if (isRemote && isConnected) {
+      api.remoteListModelProfiles(instanceId).then((p) => setModelProfiles(p.filter((m) => m.enabled))).catch((e) => console.error("Failed to load remote model profiles:", e));
     }
     refreshChannelNodes();
     refreshDiscordCache();
   }, [isRemote, refreshAgents, refreshBindings, refreshChannelNodes, refreshDiscordCache]);
 
   const handleRefreshDiscord = () => {
+    if (isRemote) return; // Refresh is local-only
     setRefreshing("discord");
     api.refreshDiscordGuildChannels()
       .then((channels) => {
@@ -137,6 +135,7 @@ export function Channels({
   };
 
   const handleRefreshPlatform = (platform: string) => {
+    if (isRemote) return; // Refresh is local-only
     setRefreshing(platform);
     api.listChannelsMinimal()
       .then((nodes) => {
@@ -250,14 +249,12 @@ export function Channels({
               ))}
             </SelectGroup>
           ))}
-          {!isRemote && (
-            <>
-              <SelectSeparator />
-              <SelectItem value="__new__">
-                <span className="text-primary">+ New agent...</span>
-              </SelectItem>
-            </>
-          )}
+          <>
+            <SelectSeparator />
+            <SelectItem value="__new__">
+              <span className="text-primary">+ New agent...</span>
+            </SelectItem>
+          </>
         </SelectContent>
       </Select>
     );
@@ -367,36 +364,33 @@ export function Channels({
         ))}
       </div>
 
-      {/* Create Agent Dialog — local only */}
-      {!isRemote && (
-        <CreateAgentDialog
-          open={showCreateAgent}
-          onOpenChange={(open) => {
-            setShowCreateAgent(open);
-            if (!open) setPendingChannel(null);
-          }}
-          modelProfiles={modelProfiles}
-          instanceId={instanceId}
-          isRemote={isRemote}
-          onCreated={(result: CreateAgentResult) => {
-            refreshAgents();
-            if (pendingChannel) {
-              handleAssign(pendingChannel.platform, pendingChannel.peerId, result.agentId);
-              // Apply persona as systemPrompt on the channel if provided
-              if (result.persona && pendingChannel.platform === "discord") {
-                const ch = discordChannels.find((c) => c.channelId === pendingChannel.peerId);
-                if (ch) {
-                  const patch = JSON.stringify({
-                    channels: { discord: { guilds: { [ch.guildId]: { channels: { [ch.channelId]: { systemPrompt: result.persona } } } } } },
-                  });
-                  api.applyConfigPatch(patch, {}).catch((e) => showToast?.(String(e), "error"));
-                }
+      <CreateAgentDialog
+        open={showCreateAgent}
+        onOpenChange={(open) => {
+          setShowCreateAgent(open);
+          if (!open) setPendingChannel(null);
+        }}
+        modelProfiles={modelProfiles}
+        onCreated={(result: CreateAgentResult) => {
+          refreshAgents();
+          if (pendingChannel) {
+            handleAssign(pendingChannel.platform, pendingChannel.peerId, result.agentId);
+            if (result.persona && pendingChannel.platform === "discord") {
+              const ch = discordChannels.find((c) => c.channelId === pendingChannel.peerId);
+              if (ch) {
+                const patch = JSON.stringify({
+                  channels: { discord: { guilds: { [ch.guildId]: { channels: { [ch.channelId]: { systemPrompt: result.persona } } } } } },
+                });
+                const patchPromise = isRemote
+                  ? api.remoteApplyConfigPatch(instanceId, patch, {})
+                  : api.applyConfigPatch(patch, {});
+                patchPromise.catch((e) => showToast?.(String(e), "error"));
               }
-              setPendingChannel(null);
             }
-          }}
-        />
-      )}
+            setPendingChannel(null);
+          }
+        }}
+      />
     </section>
   );
 }

@@ -24,7 +24,7 @@ import {
 import { CreateAgentDialog } from "@/components/CreateAgentDialog";
 import { RecipeCard } from "@/components/RecipeCard";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { StatusLight, AgentOverview, Recipe, BackupInfo, ModelProfile } from "../lib/types";
+import type { StatusLight, AgentOverview, Recipe, BackupInfo, ModelProfile, RemoteSystemStatus } from "../lib/types";
 import { formatTime, formatBytes } from "@/lib/utils";
 import { useInstance } from "@/lib/instance-context";
 
@@ -80,13 +80,10 @@ export function Home({
   const fetchStatus = useCallback(() => {
     if (isRemote) {
       if (!isConnected) return; // Wait for SSH connection
-      api.remoteGetSystemStatus(instanceId).then((s) => {
-        const healthy = s.healthy as boolean ?? false;
-        const activeAgents = s.activeAgents as number ?? 0;
-        const globalDefaultModel = s.globalDefaultModel as string | undefined;
-        setStatus({ healthy, activeAgents, globalDefaultModel });
+      api.remoteGetSystemStatus(instanceId).then((s: RemoteSystemStatus) => {
+        setStatus({ healthy: s.healthy, activeAgents: s.activeAgents, globalDefaultModel: s.globalDefaultModel });
         setStatusSettled(true);
-        if (s.openclawVersion) setVersion(s.openclawVersion as string);
+        if (s.openclawVersion) setVersion(s.openclawVersion);
       }).catch((e) => console.error("Failed to fetch remote status:", e));
     } else {
       api.getStatusLight().then((s) => {
@@ -167,7 +164,7 @@ export function Home({
     const timer = setTimeout(() => {
       if (isRemote) {
         if (!isConnected) return;
-        api.remoteCheckOpeclawUpdate(instanceId).then((u) => {
+        api.remoteCheckOpenclawUpdate(instanceId).then((u) => {
           setUpdateInfo({ available: u.upgradeAvailable, latest: u.latestVersion ?? undefined });
         }).catch((e) => console.error("Failed to check remote update:", e));
       } else {
@@ -186,6 +183,7 @@ export function Home({
   }, [isRemote, isConnected, instanceId]);
 
   const handleDeleteAgent = (agentId: string) => {
+    if (isRemote && !isConnected) return;
     const deletePromise = isRemote
       ? api.remoteDeleteAgent(instanceId, agentId)
       : api.deleteAgent(agentId);
@@ -526,8 +524,6 @@ export function Home({
         onOpenChange={setShowCreateAgent}
         modelProfiles={modelProfiles}
         onCreated={() => refreshAgents()}
-        instanceId={instanceId}
-        isRemote={isRemote}
       />
     </div>
   );

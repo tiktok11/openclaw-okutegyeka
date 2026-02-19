@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AgentOverview, AgentSessionAnalysis, ApplyResult, BackupInfo, ChannelNode, ConfigDirtyState, DiscordGuildChannel, HistoryItem, ModelCatalogProvider, ModelProfile, PreviewResult, ProviderAuthSuggestion, Recipe, ResolvedApiKey, StatusLight, SystemStatus, DoctorReport, MemoryFile, SessionFile, SshHost, SshExecResult, SftpEntry } from "./types";
+import type { AgentOverview, AgentSessionAnalysis, ApplyResult, BackupInfo, Binding, ChannelNode, ConfigDirtyState, DiscordGuildChannel, HistoryItem, ModelCatalogProvider, ModelProfile, PreviewResult, ProviderAuthSuggestion, Recipe, RemoteSystemStatus, ResolvedApiKey, StatusLight, SystemStatus, DoctorReport, MemoryFile, SessionFile, SshHost, SshExecResult, SftpEntry } from "./types";
 
 export const api = {
   getSystemStatus: (): Promise<SystemStatus> =>
@@ -94,7 +94,7 @@ export const api = {
     invoke("restart_gateway", {}),
   setGlobalModel: (profileId: string | null): Promise<boolean> =>
     invoke("set_global_model", { profileId }),
-  listBindings: (): Promise<Record<string, unknown>[]> =>
+  listBindings: (): Promise<Binding[]> =>
     invoke("list_bindings", {}),
   assignChannelAgent: (channelType: string, peerId: string, agentId: string | null): Promise<boolean> =>
     invoke("assign_channel_agent", { channelType, peerId, agentId }),
@@ -136,15 +136,15 @@ export const api = {
     invoke("sftp_remove_file", { hostId, path }),
 
   // Remote business commands
-  remoteReadRawConfig: (hostId: string): Promise<unknown> =>
+  remoteReadRawConfig: (hostId: string): Promise<string> =>
     invoke("remote_read_raw_config", { hostId }),
-  remoteGetSystemStatus: (hostId: string): Promise<Record<string, unknown>> =>
+  remoteGetSystemStatus: (hostId: string): Promise<RemoteSystemStatus> =>
     invoke("remote_get_system_status", { hostId }),
   remoteListAgentsOverview: (hostId: string): Promise<AgentOverview[]> =>
     invoke("remote_list_agents_overview", { hostId }),
   remoteListChannelsMinimal: (hostId: string): Promise<ChannelNode[]> =>
     invoke("remote_list_channels_minimal", { hostId }),
-  remoteListBindings: (hostId: string): Promise<Record<string, unknown>[]> =>
+  remoteListBindings: (hostId: string): Promise<Binding[]> =>
     invoke("remote_list_bindings", { hostId }),
   remoteRestartGateway: (hostId: string): Promise<boolean> =>
     invoke("remote_restart_gateway", { hostId }),
@@ -190,7 +190,7 @@ export const api = {
     invoke("remote_refresh_model_catalog", { hostId }),
   remoteChatViaOpenclaw: (hostId: string, agentId: string, message: string, sessionId?: string): Promise<Record<string, unknown>> =>
     invoke("remote_chat_via_openclaw", { hostId, agentId, message, sessionId }),
-  remoteCheckOpeclawUpdate: (hostId: string): Promise<{ upgradeAvailable: boolean; latestVersion: string | null; installedVersion: string }> =>
+  remoteCheckOpenclawUpdate: (hostId: string): Promise<{ upgradeAvailable: boolean; latestVersion: string | null; installedVersion: string }> =>
     invoke("remote_check_openclaw_update", { hostId }),
   remoteSaveConfigBaseline: (hostId: string): Promise<boolean> =>
     invoke("remote_save_config_baseline", { hostId }),
