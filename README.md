@@ -42,9 +42,23 @@ npx tauri build
 ### Release
 
 ```bash
-npm run release:dry-run   # Preview version bump + tag
-npm run release           # Tag and push (triggers CI)
+npm run release:dry-run                      # Preview release steps
+NEW_VERSION=0.3.1 SKIP_PROMPT=1 npm run release  # Non-interactive release prep
 ```
+
+
+
+After verification, publish installers (including Windows) with:
+
+```bash
+git commit -am "chore: release vX.Y.Z"
+git tag vX.Y.Z
+git push origin HEAD --tags
+```
+
+Then download artifacts from GitHub Releases:
+- `ClawPal_*_x64-setup.exe` or `.msi` for Windows installer
+- `ClawPal_portable_x64.exe` for Windows portable
 
 ### Environment overrides
 

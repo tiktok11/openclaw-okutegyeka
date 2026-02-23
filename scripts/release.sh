@@ -20,15 +20,18 @@ run_or_print() {
 }
 
 CURRENT_VERSION=$(node -p "require('./package.json').version")
+NEW_VERSION="${NEW_VERSION:-$CURRENT_VERSION}"
+SKIP_PROMPT="${SKIP_PROMPT:-0}"
 
 say "ClawPal release assistant"
 say "======================================"
 say "Current version: ${CURRENT_VERSION}"
 say ""
 
-# ─── Version bump ───
-read -rp "New version (leave empty to keep ${CURRENT_VERSION}): " NEW_VERSION
-NEW_VERSION="${NEW_VERSION:-$CURRENT_VERSION}"
+if [ "$SKIP_PROMPT" != "1" ]; then
+  read -rp "New version (leave empty to keep ${CURRENT_VERSION}): " INPUT_VERSION
+  NEW_VERSION="${INPUT_VERSION:-$NEW_VERSION}"
+fi
 
 if [ "$NEW_VERSION" != "$CURRENT_VERSION" ]; then
   say ""
@@ -37,22 +40,19 @@ if [ "$NEW_VERSION" != "$CURRENT_VERSION" ]; then
   # package.json
   run_or_print "npm version ${NEW_VERSION} --no-git-tag-version"
 
-  # src-tauri/Cargo.toml
-  if [ "$DRY_RUN" -eq 1 ]; then
-    say "[dry-run] Update src-tauri/Cargo.toml version to ${NEW_VERSION}"
-  else
-    sed -i '' "s/^version = \"${CURRENT_VERSION}\"/version = \"${NEW_VERSION}\"/" src-tauri/Cargo.toml
-    say "[run] Updated src-tauri/Cargo.toml"
-  fi
+  # src-tauri/Cargo.toml (cross-platform, no sed -i portability issue)
+  run_or_print "node -e \"const fs=require('fs');const p='src-tauri/Cargo.toml';let t=fs.readFileSync(p,'utf8');t=t.replace(/version = \\\"${CURRENT_VERSION}\\\"/, 'version = \\\"${NEW_VERSION}\\\"');fs.writeFileSync(p,t);\""
 
-  # src-tauri/Cargo.lock (regenerate via cargo check)
+  # src-tauri/Cargo.lock (regenerate)
   run_or_print "cd src-tauri && cargo check --quiet"
 
   say ""
   say "Version bumped to ${NEW_VERSION}"
-  say "Review changes, then commit before continuing."
-  say ""
-  read -rp "Press Enter to continue after committing, or Ctrl-C to abort..."
+  if [ "$SKIP_PROMPT" != "1" ]; then
+    say "Review changes, then commit before continuing."
+    say ""
+    read -rp "Press Enter to continue after committing, or Ctrl-C to abort..."
+  fi
 fi
 
 VERSION="${NEW_VERSION}"
@@ -103,8 +103,8 @@ done <<< "$COMMITS"
 say "======================================"
 say ""
 say "To publish via GitHub Actions (builds macOS + Windows + Linux):"
+say "  git commit -am 'chore: release v${VERSION}'"
 say "  git tag v${VERSION}"
-say "  git push origin v${VERSION}"
+say "  git push origin HEAD --tags"
 say ""
-say "This will trigger .github/workflows/release.yml and create a draft release."
-say "The changelog above will be auto-generated in the release notes."
+say "This will trigger .github/workflows/release.yml and create/update a GitHub release with Windows installer assets (.exe/.msi)."

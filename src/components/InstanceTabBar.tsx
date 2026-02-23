@@ -263,6 +263,7 @@ export function InstanceTabBar({
                     ...f,
                     authMethod: val as SshHost["authMethod"],
                     keyPath: val === "key" ? (f.authMethod === "key" ? f.keyPath : "") : undefined,
+                    password: val === "password" ? (f.authMethod === "password" ? f.password : "") : undefined,
                   }))
                 }
               >
@@ -272,15 +273,18 @@ export function InstanceTabBar({
                 <SelectContent>
                   <SelectItem value="ssh_config">{t('instance.authSshConfig')}</SelectItem>
                   <SelectItem value="key">{t('instance.authKey')}</SelectItem>
+                  <SelectItem value="password">{t('instance.authPassword')}</SelectItem>
                 </SelectContent>
               </Select>
-              <button
-                type="button"
-                className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 mt-1"
-                onClick={() => setKeyGuideOpen(true)}
-              >
-                {t('instance.keyGuideLink')}
-              </button>
+              {form.authMethod === "key" && (
+                <button
+                  type="button"
+                  className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 mt-1"
+                  onClick={() => setKeyGuideOpen(true)}
+                >
+                  {t('instance.keyGuideLink')}
+                </button>
+              )}
             </div>
             {form.authMethod === "key" && (
               <div className="space-y-1.5">
@@ -296,12 +300,28 @@ export function InstanceTabBar({
                 />
               </div>
             )}
+            {form.authMethod === "password" && (
+              <div className="space-y-1.5">
+                <Label htmlFor="ssh-password">{t('instance.password')}</Label>
+                <Input
+                  id="ssh-password"
+                  type="password"
+                  value={form.password || ""}
+                  onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
+                  placeholder={t('instance.passwordPlaceholder')}
+                  autoCapitalize="off"
+                  autoCorrect="off"
+                  spellCheck={false}
+                />
+                <p className="text-xs text-muted-foreground">{t('instance.passwordHint')}</p>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={saving}>
               {t('instance.cancel')}
             </Button>
-            <Button onClick={handleSave} disabled={saving || !form.host}>
+            <Button onClick={handleSave} disabled={saving || !form.host || (form.authMethod === "password" && !form.password)}>
               {saving ? t('instance.saving') : editingHost ? t('instance.update') : t('instance.add')}
             </Button>
           </DialogFooter>
