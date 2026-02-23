@@ -100,8 +100,8 @@ fn is_transient_ssh_error(err: &str) -> bool {
         "end of file",
         "timed out",
     ];
-    transient.iter().any(|t| lower.contains(t))
-        || lower.contains("failed to exec") // our own wrapper message
+    transient.iter().any(|t| lower.contains(t)) || lower.contains("failed to exec")
+    // our own wrapper message
 }
 
 // ---------------------------------------------------------------------------
@@ -111,14 +111,15 @@ fn is_transient_ssh_error(err: &str) -> bool {
 #[cfg(unix)]
 mod inner {
     use super::*;
+    use openssh::{ControlPersist, ForwardType, KnownHosts, Session, SessionBuilder, Socket};
     use std::path::PathBuf;
     use std::sync::Arc;
-    use openssh::{ControlPersist, ForwardType, KnownHosts, Session, SessionBuilder, Socket};
     use tokio::net::TcpStream;
     use tokio::process::Command;
 
+    #[derive(Clone)]
     struct SshConnection {
-        session: Arc<Session>,
+        session: Option<Arc<Session>>,
         home_dir: String,
         config: SshHostConfig,
     }
@@ -146,13 +147,39 @@ mod inner {
 
         pub async fn connect(&self, config: &SshHostConfig) -> Result<(), String> {
             let _lifecycle_guard = self.lifecycle.lock().await;
+
             if config.auth_method == "password" {
-                return Err(
-                    "Password authentication is not supported with openssh. \
-                     Please use SSH Config or Private Key mode instead. \
-                     If your key is in ssh-agent, select SSH Config mode."
-                        .into(),
-                );
+                let output = Self::run_password_ssh(config, "echo $HOME", 20).await?;
+                if !output.status.success() {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    return Err(format!("SSH connection failed: {}", stderr.trim()));
+                }
+                let home_dir = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                let old = {
+                    let mut pool = self.connections.lock().await;
+                    let old = pool.remove(&config.id);
+                    pool.insert(
+                        config.id.clone(),
+                        SshConnection {
+                            session: None,
+                            home_dir: if home_dir.is_empty() {
+                                "/root".to_string()
+                            } else {
+                                home_dir
+                            },
+                            config: config.clone(),
+                        },
+                    );
+                    old
+                };
+                if let Some(old) = old {
+                    if let Some(session) = old.session {
+                        if let Ok(session) = Arc::try_unwrap(session) {
+                            let _ = session.close().await;
+                        }
+                    }
+                }
+                return Ok(());
             }
 
             let dest = if config.username.is_empty() {
@@ -215,32 +242,43 @@ mod inner {
             let old = {
                 let mut pool = self.connections.lock().await;
                 let old = pool.remove(&config.id);
-                pool.insert(config.id.clone(), SshConnection { session: Arc::new(session), home_dir, config: config.clone() });
+                pool.insert(
+                    config.id.clone(),
+                    SshConnection {
+                        session: Some(Arc::new(session)),
+                        home_dir,
+                        config: config.clone(),
+                    },
+                );
                 old
             };
             // Best-effort cleanup of old session outside the lock
             let old_forward = self.forwards.lock().await.remove(&config.id);
             if let (Some(old), Some(fwd)) = (&old, old_forward) {
-                Self::close_port_forward_with_session(&old.session, fwd).await;
+                if let Some(ref session) = old.session {
+                    Self::close_port_forward_with_session(session, fwd).await;
+                }
             }
             if let Some(old) = old {
-                match Arc::try_unwrap(old.session) {
-                    Ok(old_session) => {
-                        let _ = old_session.close().await;
-                    }
-                    Err(arc) => {
-                        // In-flight commands hold references — spawn background cleanup
-                        tokio::spawn(async move {
-                            for _ in 0..120 {
-                                if Arc::strong_count(&arc) <= 1 {
-                                    break;
+                if let Some(session) = old.session {
+                    match Arc::try_unwrap(session) {
+                        Ok(old_session) => {
+                            let _ = old_session.close().await;
+                        }
+                        Err(arc) => {
+                            // In-flight commands hold references — spawn background cleanup
+                            tokio::spawn(async move {
+                                for _ in 0..120 {
+                                    if Arc::strong_count(&arc) <= 1 {
+                                        break;
+                                    }
+                                    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
                                 }
-                                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                            }
-                            if let Ok(session) = Arc::try_unwrap(arc) {
-                                let _ = session.close().await;
-                            }
-                        });
+                                if let Ok(session) = Arc::try_unwrap(arc) {
+                                    let _ = session.close().await;
+                                }
+                            });
+                        }
                     }
                 }
             }
@@ -273,30 +311,34 @@ mod inner {
             let old_forward = self.forwards.lock().await.remove(id);
             if let Some(conn) = conn {
                 if let Some(fwd) = old_forward {
-                    Self::close_port_forward_with_session(&conn.session, fwd).await;
-                }
-                match Arc::try_unwrap(conn.session) {
-                    Ok(session) => {
-                        let _ = session.close().await;
+                    if let Some(ref session) = conn.session {
+                        Self::close_port_forward_with_session(session, fwd).await;
                     }
-                    Err(arc) => {
-                        // Other references exist (in-flight exec). Spawn a
-                        // background task that waits for them to finish, then
-                        // explicitly closes the session so the ControlMaster
-                        // is cleaned up instead of lingering for ControlPersist.
-                        tokio::spawn(async move {
-                            // Poll until we're the last reference (in-flight commands done)
-                            for _ in 0..120 {
-                                if Arc::strong_count(&arc) <= 1 {
-                                    break;
+                }
+                if let Some(session) = conn.session {
+                    match Arc::try_unwrap(session) {
+                        Ok(session) => {
+                            let _ = session.close().await;
+                        }
+                        Err(arc) => {
+                            // Other references exist (in-flight exec). Spawn a
+                            // background task that waits for them to finish, then
+                            // explicitly closes the session so the ControlMaster
+                            // is cleaned up instead of lingering for ControlPersist.
+                            tokio::spawn(async move {
+                                // Poll until we're the last reference (in-flight commands done)
+                                for _ in 0..120 {
+                                    if Arc::strong_count(&arc) <= 1 {
+                                        break;
+                                    }
+                                    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
                                 }
-                                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                            }
-                            if let Ok(session) = Arc::try_unwrap(arc) {
-                                let _ = session.close().await;
-                            }
-                            // If try_unwrap still fails after 60s, drop triggers Session::Drop
-                        });
+                                if let Ok(session) = Arc::try_unwrap(arc) {
+                                    let _ = session.close().await;
+                                }
+                                // If try_unwrap still fails after 60s, drop triggers Session::Drop
+                            });
+                        }
                     }
                 }
             }
@@ -307,16 +349,23 @@ mod inner {
             let session = {
                 let pool = self.connections.lock().await;
                 match pool.get(id) {
-                    Some(conn) => Arc::clone(&conn.session),
+                    Some(conn) => conn.session.clone(),
                     None => return false,
                 }
             };
-            session.check().await.is_ok()
+            match session {
+                Some(session) => session.check().await.is_ok(),
+                None => true,
+            }
         }
 
         /// Create a local port forward: localhost:<local_port> → remote 127.0.0.1:<remote_port>.
         /// Binds to a random local port (port 0) and returns the actual port assigned.
-        pub async fn request_port_forward(&self, id: &str, remote_port: u16) -> Result<u16, String> {
+        pub async fn request_port_forward(
+            &self,
+            id: &str,
+            remote_port: u16,
+        ) -> Result<u16, String> {
             let _lifecycle_guard = self.lifecycle.lock().await;
             // Reuse an existing forward when possible to avoid accumulating
             // duplicate local forwards for repeated doctor sessions.
@@ -341,8 +390,12 @@ mod inner {
                     self.forwards.lock().await.remove(id);
                     let session = {
                         let pool = self.connections.lock().await;
-                        let conn = pool.get(id).ok_or_else(|| format!("No connection for id: {id}"))?;
-                        Arc::clone(&conn.session)
+                        let conn = pool
+                            .get(id)
+                            .ok_or_else(|| format!("No connection for id: {id}"))?;
+                        conn.session.clone().ok_or_else(|| {
+                            "Port forwarding is not available in password mode yet".to_string()
+                        })?
                     };
                     Self::close_port_forward_with_session(&session, cached).await;
                 }
@@ -350,8 +403,12 @@ mod inner {
 
             let session = {
                 let pool = self.connections.lock().await;
-                let conn = pool.get(id).ok_or_else(|| format!("No connection for id: {id}"))?;
-                Arc::clone(&conn.session)
+                let conn = pool
+                    .get(id)
+                    .ok_or_else(|| format!("No connection for id: {id}"))?;
+                conn.session.clone().ok_or_else(|| {
+                    "Port forwarding is not available in password mode yet".to_string()
+                })?
             };
             // Bind to port 0 = OS picks a free port
             let local_port = portpicker::pick_unused_port()
@@ -359,15 +416,24 @@ mod inner {
             session
                 .request_port_forward(
                     ForwardType::Local,
-                    Socket::TcpSocket { host: "127.0.0.1".into(), port: local_port },
-                    Socket::TcpSocket { host: "127.0.0.1".into(), port: remote_port },
+                    Socket::TcpSocket {
+                        host: "127.0.0.1".into(),
+                        port: local_port,
+                    },
+                    Socket::TcpSocket {
+                        host: "127.0.0.1".into(),
+                        port: remote_port,
+                    },
                 )
                 .await
                 .map_err(|e| format!("SSH port forward failed: {e}"))?;
-            self.forwards
-                .lock()
-                .await
-                .insert(id.to_string(), PortForward { remote_port, local_port });
+            self.forwards.lock().await.insert(
+                id.to_string(),
+                PortForward {
+                    remote_port,
+                    local_port,
+                },
+            );
             Ok(local_port)
         }
 
@@ -375,8 +441,14 @@ mod inner {
             let _ = session
                 .close_port_forward(
                     ForwardType::Local,
-                    Socket::TcpSocket { host: "127.0.0.1".into(), port: fwd.local_port },
-                    Socket::TcpSocket { host: "127.0.0.1".into(), port: fwd.remote_port },
+                    Socket::TcpSocket {
+                        host: "127.0.0.1".into(),
+                        port: fwd.local_port,
+                    },
+                    Socket::TcpSocket {
+                        host: "127.0.0.1".into(),
+                        port: fwd.remote_port,
+                    },
                 )
                 .await;
         }
@@ -477,13 +549,25 @@ mod inner {
         }
 
         async fn exec_once(&self, id: &str, command: &str) -> Result<SshExecResult, String> {
-            let session = {
+            let conn = {
                 let pool = self.connections.lock().await;
-                let conn = pool
-                    .get(id)
-                    .ok_or_else(|| format!("No connection for id: {id}"))?;
-                Arc::clone(&conn.session)
+                pool.get(id)
+                    .cloned()
+                    .ok_or_else(|| format!("No connection for id: {id}"))?
             };
+
+            if conn.config.auth_method == "password" {
+                let output = Self::run_password_ssh(&conn.config, command, 120).await?;
+                return Ok(SshExecResult {
+                    stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+                    stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+                    exit_code: output.status.code().unwrap_or(1) as u32,
+                });
+            }
+
+            let session = conn
+                .session
+                .ok_or_else(|| "SSH session unavailable".to_string())?;
 
             let output = tokio::time::timeout(
                 std::time::Duration::from_secs(120),
@@ -497,6 +581,59 @@ mod inner {
                 stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
                 stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
                 exit_code: output.status.code().unwrap_or(1) as u32,
+            })
+        }
+
+        async fn run_password_ssh(
+            config: &SshHostConfig,
+            command: &str,
+            timeout_secs: u64,
+        ) -> Result<std::process::Output, String> {
+            let password = config
+                .password
+                .as_ref()
+                .ok_or_else(|| "Password is required for password auth mode".to_string())?;
+            let dest = if config.username.is_empty() {
+                config.host.clone()
+            } else {
+                format!("{}@{}", config.username, config.host)
+            };
+            let mut args = vec![
+                "-o".to_string(),
+                "StrictHostKeyChecking=accept-new".to_string(),
+                "-o".to_string(),
+                "ConnectTimeout=15".to_string(),
+                "-o".to_string(),
+                "ServerAliveInterval=30".to_string(),
+                "-o".to_string(),
+                "PreferredAuthentications=password".to_string(),
+                "-o".to_string(),
+                "PubkeyAuthentication=no".to_string(),
+            ];
+            if config.port != 22 {
+                args.push("-p".to_string());
+                args.push(config.port.to_string());
+            }
+            args.push(dest);
+            args.push(command.to_string());
+
+            tokio::time::timeout(
+                std::time::Duration::from_secs(timeout_secs),
+                Command::new("sshpass")
+                    .arg("-p")
+                    .arg(password)
+                    .arg("ssh")
+                    .args(args)
+                    .output(),
+            )
+            .await
+            .map_err(|_| format!("SSH command timed out after {timeout_secs}s"))?
+            .map_err(|e| {
+                if e.kind() == std::io::ErrorKind::NotFound {
+                    "Password auth requires `sshpass` to be installed on this system.".to_string()
+                } else {
+                    format!("Failed to execute sshpass: {e}")
+                }
             })
         }
 
@@ -562,10 +699,7 @@ mod inner {
             let resolved = self.resolve_path(id, path).await?;
             let quoted = shell_quote(&resolved);
             // Use ls -lA for cross-platform compat (GNU stat vs BSD stat differ).
-            let cmd = format!(
-                "ls -lA {} 2>/dev/null || true",
-                quoted
-            );
+            let cmd = format!("ls -lA {} 2>/dev/null || true", quoted);
             let result = self.exec(id, &cmd).await?;
 
             let mut entries = Vec::new();
@@ -712,7 +846,10 @@ mod inner {
             timeout_secs: u64,
             context: &str,
         ) -> Result<std::process::Output, String> {
-            let _permit = self.exec_limit.acquire().await
+            let _permit = self
+                .exec_limit
+                .acquire()
+                .await
                 .map_err(|_| "SSH executor is shutting down".to_string())?;
             tokio::time::timeout(
                 std::time::Duration::from_secs(timeout_secs),
@@ -726,11 +863,9 @@ mod inner {
         pub async fn connect(&self, config: &SshHostConfig) -> Result<(), String> {
             let _lifecycle_guard = self.lifecycle.lock().await;
             if config.auth_method == "password" {
-                return Err(
-                    "Password authentication is not supported. \
+                return Err("Password authentication is not supported. \
                      Please use SSH Config or Private Key mode instead."
-                        .into(),
-                );
+                    .into());
             }
 
             // Test connection with a simple command
@@ -742,7 +877,9 @@ mod inner {
             let mut args = conn.ssh_args();
             args.push("echo $HOME".into());
 
-            let output = self.run_ssh_output(&args, 20, "SSH connection failed").await?;
+            let output = self
+                .run_ssh_output(&args, 20, "SSH connection failed")
+                .await?;
 
             if !output.status.success() {
                 let stderr = String::from_utf8_lossy(&output.stderr);
@@ -750,7 +887,11 @@ mod inner {
             }
 
             let home = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            conn.home_dir = if home.is_empty() { "/root".into() } else { home };
+            conn.home_dir = if home.is_empty() {
+                "/root".into()
+            } else {
+                home
+            };
 
             let mut pool = self.connections.lock().await;
             pool.insert(config.id.clone(), conn);
@@ -817,7 +958,11 @@ mod inner {
 
         /// Create a local port forward via `ssh -L -N`. Returns the local port.
         /// The ssh process is tracked and killed on disconnect or next forward request.
-        pub async fn request_port_forward(&self, id: &str, remote_port: u16) -> Result<u16, String> {
+        pub async fn request_port_forward(
+            &self,
+            id: &str,
+            remote_port: u16,
+        ) -> Result<u16, String> {
             let _lifecycle_guard = self.lifecycle.lock().await;
             // Reuse live forward for the same remote port; otherwise replace.
             let mut to_kill = None;
@@ -859,7 +1004,9 @@ mod inner {
 
             let args = {
                 let pool = self.connections.lock().await;
-                let conn = pool.get(id).ok_or_else(|| format!("No connection for id: {id}"))?;
+                let conn = pool
+                    .get(id)
+                    .ok_or_else(|| format!("No connection for id: {id}"))?;
                 conn.ssh_args()
             };
             let local_port = portpicker::pick_unused_port()
@@ -1023,10 +1170,7 @@ mod inner {
             let resolved = self.resolve_path(id, path).await?;
             let quoted = shell_quote(&resolved);
             // Use ls -lA for cross-platform compat (GNU stat vs BSD stat differ).
-            let cmd = format!(
-                "ls -lA {} 2>/dev/null || true",
-                quoted
-            );
+            let cmd = format!("ls -lA {} 2>/dev/null || true", quoted);
             let result = self.exec(id, &cmd).await?;
 
             let mut entries = Vec::new();
@@ -1073,7 +1217,9 @@ mod inner {
     }
 
     impl Default for SshConnectionPool {
-        fn default() -> Self { Self::new() }
+        fn default() -> Self {
+            Self::new()
+        }
     }
 }
 
@@ -1101,7 +1247,11 @@ mod tests {
     #[test]
     fn test_legacy_cleanup_match_with_username_host() {
         let cmd = "ssh -E /Users/a/.local/state/.ssh-connectionXYZ/log -S /Users/a/.local/state/.ssh-connectionXYZ/master -M -f -N -o ControlPersist=yes ubuntu@vm1";
-        assert!(is_legacy_clawpal_master_for_host(cmd, "vm1", Some("ubuntu")));
+        assert!(is_legacy_clawpal_master_for_host(
+            cmd,
+            "vm1",
+            Some("ubuntu")
+        ));
     }
 
     #[test]
@@ -1113,6 +1263,10 @@ mod tests {
     #[test]
     fn test_legacy_cleanup_not_match_different_host() {
         let cmd = "ssh -E /Users/a/.local/state/.ssh-connectionXYZ/log -S /Users/a/.local/state/.ssh-connectionXYZ/master -M -f -N ubuntu@vm2";
-        assert!(!is_legacy_clawpal_master_for_host(cmd, "vm1", Some("ubuntu")));
+        assert!(!is_legacy_clawpal_master_for_host(
+            cmd,
+            "vm1",
+            Some("ubuntu")
+        ));
     }
 }
